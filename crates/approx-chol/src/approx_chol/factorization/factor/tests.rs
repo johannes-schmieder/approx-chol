@@ -95,3 +95,58 @@ mod validation {
         }
     }
 }
+
+#[test]
+fn retained_capacity_counts_spare_nested_arrays_and_fallbacks() {
+    use crate::approx_chol::factorization::{
+        anchor::Anchor,
+        approximate::{EliminationSequence, StepHeader},
+        block::BlockDim,
+        cholesky::Cholesky,
+        exact::LowerTriangular,
+    };
+    use core::mem::size_of;
+    let mut steps = Vec::with_capacity(5);
+    steps.push(StepHeader {
+        vertex: 0,
+        end: 1,
+        inv_diag: 1.0_f64,
+    });
+    let mut neighbors = Vec::with_capacity(11);
+    neighbors.push(1);
+    let mut fractions = Vec::with_capacity(13);
+    fractions.push(0.25);
+    let mut lower = Vec::with_capacity(9);
+    lower.extend([1.0, 0.25, 2.0]);
+    let nested = steps.capacity() * size_of::<StepHeader<f64>>()
+        + neighbors.capacity() * size_of::<u32>()
+        + fractions.capacity() * size_of::<f64>()
+        + lower.capacity() * size_of::<f64>();
+    let mut blocks = Vec::with_capacity(7);
+    blocks.push(Block::new(
+        BlockDim::of(2).unwrap(),
+        Anchor::Floating,
+        Cholesky::Approximate(EliminationSequence {
+            steps,
+            neighbor_indices: neighbors,
+            elimination_fractions: fractions,
+            uneliminated: 1,
+        }),
+    ));
+    blocks.push(Block::new(
+        BlockDim::of(3).unwrap(),
+        Anchor::Floating,
+        Cholesky::Exact(LowerTriangular { values: lower }),
+    ));
+    let mut forward = Vec::with_capacity(15);
+    forward.extend([2, 3, 4, 0, 1]);
+    let mut fallbacks = Vec::with_capacity(4);
+    fallbacks.push(Fallback::WillNotFit { dim: 42 });
+    let expected = nested
+        + blocks.capacity() * size_of::<Block<f64>>()
+        + forward.capacity() * size_of::<u32>()
+        + fallbacks.capacity() * size_of::<Fallback>();
+    let factor = Factor::from_blocks(Permutation::from_order(forward), blocks, fallbacks);
+    assert_eq!(factor.retained_heap_bytes(), Some(expected));
+    assert_eq!(Factor::<f32>::empty().retained_heap_bytes(), Some(0));
+}

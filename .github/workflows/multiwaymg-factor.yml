@@ -1,0 +1,65 @@
+name: MultiwayMG factor contract
+
+on:
+  push:
+    branches: [multiwaymg, "codex/**"]
+  pull_request:
+    branches: [multiwaymg]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --workspace --all-features
+      - run: cargo test --locked --workspace --no-default-features
+      - run: cargo fmt --manifest-path qualification/factor-reference/Cargo.toml -- --check
+      - run: cargo clippy --locked --manifest-path qualification/factor-reference/Cargo.toml --all-targets --all-features -- -D warnings
+      - run: cargo doc --locked --workspace --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+  allocations:
+    name: Factor scratch (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Isolated first, repeated, failure and capacity contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir factor-evidence
+          git rev-parse HEAD > factor-evidence/metadata.txt
+          echo "event=${{ github.event_name }} run=${{ github.run_id }}" >> factor-evidence/metadata.txt
+          rustc -Vv >> factor-evidence/metadata.txt
+          cargo test --locked --manifest-path crates/approx-chol/Cargo.toml --all-features --test factor_scratch --test scratch_allocations 2>&1 | tee factor-evidence/debug-all.txt
+          cargo test --locked --manifest-path crates/approx-chol/Cargo.toml --no-default-features --test factor_scratch --test scratch_allocations 2>&1 | tee factor-evidence/debug-minimal.txt
+          cargo test --locked --release --manifest-path crates/approx-chol/Cargo.toml --all-features --test factor_scratch --test scratch_allocations 2>&1 | tee factor-evidence/release-all.txt
+          cargo test --locked --release --manifest-path crates/approx-chol/Cargo.toml --no-default-features --test factor_scratch --test scratch_allocations 2>&1 | tee factor-evidence/release-minimal.txt
+          cargo test --locked --all-features --manifest-path qualification/factor-reference/Cargo.toml 2>&1 | tee factor-evidence/reference-debug-all.txt
+          cargo test --locked --no-default-features --manifest-path qualification/factor-reference/Cargo.toml 2>&1 | tee factor-evidence/reference-debug-minimal.txt
+          cargo test --locked --release --all-features --manifest-path qualification/factor-reference/Cargo.toml 2>&1 | tee factor-evidence/reference-release-all.txt
+          cargo test --locked --release --no-default-features --manifest-path qualification/factor-reference/Cargo.toml 2>&1 | tee factor-evidence/reference-release-minimal.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: factor-scratch-${{ matrix.os }}
+          path: factor-evidence/
+          if-no-files-found: error

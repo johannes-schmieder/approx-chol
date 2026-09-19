@@ -181,7 +181,7 @@ impl<'a, T> CsrRef<'a, T, u32> {
     }
 }
 
-impl<'a, T: Clone, I: PrimInt> CsrRef<'a, T, I> {
+impl<T: Clone, I: PrimInt> CsrRef<'_, T, I> {
     /// Convert to an owned CSR with `u32` indices.
     ///
     /// # Errors
@@ -286,9 +286,9 @@ fn validate_square_dims(rows: usize, cols: usize) -> Result<u32, Error> {
 }
 
 #[cfg(feature = "sprs")]
-fn try_from_sprs_view_impl<'a, T, I: sprs::SpIndex + PrimInt>(
-    mat: sprs::CsMatViewI<'a, T, I>,
-) -> Result<CsrRef<'a, T, I>, Error> {
+fn try_from_sprs_view_impl<T, I: sprs::SpIndex + PrimInt>(
+    mat: sprs::CsMatViewI<'_, T, I>,
+) -> Result<CsrRef<'_, T, I>, Error> {
     if !mat.is_csr() {
         return Err(Error::InvalidCsr(CsrError::ExpectedCsrMatrixGotCsc));
     }
@@ -298,9 +298,9 @@ fn try_from_sprs_view_impl<'a, T, I: sprs::SpIndex + PrimInt>(
 }
 
 #[cfg(feature = "faer")]
-fn try_from_faer_view_impl<'a, T, I: faer::Index + PrimInt>(
-    mat: faer::sparse::SparseRowMatRef<'a, I, T>,
-) -> Result<CsrRef<'a, T, I>, Error> {
+fn try_from_faer_view_impl<T, I: faer::Index + PrimInt>(
+    mat: faer::sparse::SparseRowMatRef<'_, I, T>,
+) -> Result<CsrRef<'_, T, I>, Error> {
     let n = validate_square_dims(mat.nrows(), mat.ncols())?;
     let symbolic = mat.symbolic();
     CsrRef::new(symbolic.row_ptr(), symbolic.col_idx(), mat.val(), n)

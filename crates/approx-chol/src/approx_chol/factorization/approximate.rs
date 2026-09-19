@@ -85,7 +85,7 @@ struct EliminationStep<'a, T> {
 /// Neither kernel bounds-checks per step: the caller asserts `y.len() >= n` once per
 /// solve, and every index is under `n` by construction or by
 /// [`EliminationSequence::validate_values`].
-impl<'a, T: Real> EliminationStep<'a, T> {
+impl<T: Real> EliminationStep<'_, T> {
     /// Forward elimination: scatter pivot weight to neighbors, then scale by D^{-1}.
     #[inline(always)]
     fn apply_forward(&self, y: &mut [T]) {

@@ -56,6 +56,21 @@ pub(crate) struct Block<T> {
 }
 
 impl<T> Block<T> {
+    pub(super) fn retained_heap_bytes(&self) -> Option<usize> {
+        use super::approximate::StepHeader;
+        use super::capacity_bytes;
+        match &self.cholesky {
+            Cholesky::Approximate(sequence) => {
+                capacity_bytes::<StepHeader<T>>(sequence.steps.capacity())?
+                    .checked_add(capacity_bytes::<u32>(sequence.neighbor_indices.capacity())?)?
+                    .checked_add(capacity_bytes::<T>(
+                        sequence.elimination_fractions.capacity(),
+                    )?)
+            }
+            Cholesky::Exact(lower) => capacity_bytes::<T>(lower.values.capacity()),
+        }
+    }
+
     pub(super) fn dim(&self) -> BlockDim {
         self.dim
     }

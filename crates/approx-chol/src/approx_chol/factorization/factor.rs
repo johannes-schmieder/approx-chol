@@ -140,6 +140,13 @@ pub enum SolveError {
         /// Maximum accepted RHS length.
         factor_dim: usize,
     },
+    /// Permutation scratch smaller than [`Factor::permutation_scratch_len`].
+    ScratchBufferTooSmall {
+        /// Provided scratch length.
+        scratch_len: usize,
+        /// Required scalar count.
+        required: usize,
+    },
     /// Work buffer smaller than the factor dimension.
     WorkBufferTooSmall {
         /// Provided work length.
@@ -158,6 +165,13 @@ impl fmt::Display for SolveError {
             } => write!(
                 f,
                 "rhs length {rhs_len} exceeds original matrix dimension {factor_dim}"
+            ),
+            Self::ScratchBufferTooSmall {
+                scratch_len,
+                required,
+            } => write!(
+                f,
+                "permutation scratch too small: got {scratch_len}, need at least {required}"
             ),
             Self::WorkBufferTooSmall {
                 work_len,
@@ -187,6 +201,40 @@ impl<T> Factor<T> {
     #[inline]
     pub fn n(&self) -> usize {
         self.n
+    }
+
+    /// Scalar entries needed by the supplied-scratch solve methods.
+    ///
+    /// Zero for block-contiguous input, otherwise [`Self::n`], including ground
+    /// augmentation. The gather overwrites every consumed entry; initial values
+    /// and any unused tail do not matter. This query allocates nothing.
+    pub fn permutation_scratch_len(&self) -> usize {
+        if self.permutation.is_some() {
+            self.n
+        } else {
+            0
+        }
+    }
+
+    /// Checked sum of this factor's retained heap-array capacities in bytes.
+    ///
+    /// Includes block/fallback descriptors, the optional permutation and every
+    /// nested exact/approximate factor array, including spare capacity. Excludes
+    /// inline `Factor` storage, allocator overhead/excess beyond reported vector
+    /// capacity, caller scratch and construction peak. This is a post-build
+    /// inventory, not construction admission. Returns `None` on arithmetic
+    /// overflow. The query allocates nothing and takes O(number of blocks) time.
+    pub fn retained_heap_bytes(&self) -> Option<usize> {
+        use super::capacity_bytes;
+        let mut bytes = capacity_bytes::<Block<T>>(self.blocks.capacity())?
+            .checked_add(capacity_bytes::<Fallback>(self.fallbacks.capacity())?)?;
+        if let Some(permutation) = &self.permutation {
+            bytes = bytes.checked_add(capacity_bytes::<u32>(permutation.forward.capacity())?)?;
+        }
+        for block in &self.blocks {
+            bytes = bytes.checked_add(block.retained_heap_bytes()?)?;
+        }
+        Some(bytes)
     }
 
     /// The one place `n` is ever written, so it cannot drift from the blocks it sums.
@@ -252,16 +300,37 @@ where
         self.for_each_block(work, Block::solve_canonical);
     }
 
-    fn for_each_block(&self, values: &mut [T], mut solve: impl FnMut(&Block<T>, &mut [T])) {
+    fn for_each_block(&self, values: &mut [T], solve: impl FnMut(&Block<T>, &mut [T])) {
+        let mut scratch = vec![T::zero(); self.permutation_scratch_len()];
+        self.for_each_block_with_scratch(values, &mut scratch, solve);
+    }
+
+    fn for_each_block_with_scratch(
+        &self,
+        values: &mut [T],
+        scratch: &mut [T],
+        mut solve: impl FnMut(&Block<T>, &mut [T]),
+    ) {
         let values = &mut values[..self.n()];
         let Some(permutation) = &self.permutation else {
             Self::solve_blocks(&self.blocks, values, &mut solve);
             return;
         };
-        let mut scratch = vec![T::zero(); self.n()];
-        permutation.gather_into(values, &mut scratch);
-        Self::solve_blocks(&self.blocks, &mut scratch, &mut solve);
-        permutation.scatter_from(&scratch, values);
+        let scratch = &mut scratch[..self.n()];
+        permutation.gather_into(values, scratch);
+        Self::solve_blocks(&self.blocks, scratch, &mut solve);
+        permutation.scatter_from(scratch, values);
+    }
+
+    fn validate_scratch(&self, scratch: &[T]) -> Result<(), SolveError> {
+        let required = self.permutation_scratch_len();
+        if scratch.len() < required {
+            return Err(SolveError::ScratchBufferTooSmall {
+                scratch_len: scratch.len(),
+                required,
+            });
+        }
+        Ok(())
     }
 
     #[inline(always)]
@@ -297,6 +366,54 @@ where
         }
         self.validate_work(work)?;
         self.solve_kernel(b, work);
+        Ok(())
+    }
+
+    /// Solve into caller work and permutation scratch without allocating.
+    ///
+    /// Uses the same canonical least-squares action as [`Self::solve_into`].
+    /// `b` may be shorter than [`Self::original_n`]; missing entries are zero.
+    /// Requires at least [`Self::n`] work entries and
+    /// [`Self::permutation_scratch_len`] scratch entries. Validates RHS, work,
+    /// then scratch sizes before any write. Errors preserve both buffers; success
+    /// leaves their unused tails untouched. No numerical finiteness certificate
+    /// is implied by success, just as with the existing solve methods.
+    pub fn solve_into_with_scratch(
+        &self,
+        b: &[T],
+        work: &mut [T],
+        scratch: &mut [T],
+    ) -> Result<(), SolveError> {
+        let original_n = self.original_n();
+        if b.len() > original_n {
+            return Err(SolveError::RhsLengthExceedsFactor {
+                rhs_len: b.len(),
+                factor_dim: original_n,
+            });
+        }
+        self.validate_work(work)?;
+        self.validate_scratch(scratch)?;
+        work[..b.len()].copy_from_slice(b);
+        work[b.len()..self.n()].fill(T::zero());
+        self.for_each_block_with_scratch(work, scratch, Block::solve_canonical);
+        Ok(())
+    }
+
+    /// Solve in place using caller permutation scratch without allocating.
+    ///
+    /// Uses the same anchored action as [`Self::solve_in_place`]. Requires at
+    /// least [`Self::n`] value entries (including any ground augmentation) and
+    /// [`Self::permutation_scratch_len`] scratch entries. All sizes validate
+    /// before either buffer is touched. On success, unused tails remain intact;
+    /// scratch need not be initialized. No threads are started or entered.
+    pub fn solve_in_place_with_scratch(
+        &self,
+        values: &mut [T],
+        scratch: &mut [T],
+    ) -> Result<(), SolveError> {
+        self.validate_work(values)?;
+        self.validate_scratch(scratch)?;
+        self.for_each_block_with_scratch(values, scratch, Block::solve_anchored);
         Ok(())
     }
 
