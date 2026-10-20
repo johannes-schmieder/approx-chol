@@ -31,6 +31,7 @@ faer = ["dep:faer"]
 
 [dev-dependencies]
 stats_alloc = "=0.1.10"
+allocation-counter = "=0.8.1"
 # Keep the full development suite compatible with the declared Rust 1.85 MSRV.
 criterion = { version = "=0.7.0", features = ["html_reports"] }
 proptest = "1.6"
@@ -64,4 +65,8 @@ harness = false
 
 [[test]]
 name = "scratch_allocations"
+harness = false
+
+[[test]]
+name = "construction_allocations"
 harness = false

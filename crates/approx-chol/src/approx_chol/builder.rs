@@ -2,6 +2,7 @@ use super::config::{Backend, Config, Route};
 use super::factorization::{
     approximate, exact, Anchor, Block, BlockDim, Cholesky, Fallback, Permutation,
 };
+use crate::construction::{Account, ConstructionLimit, ConstructionReport, Ledger, Unaccounted};
 use crate::graph::{BlockVertices, EdgeCount, Ingestion, Multi, Single};
 use crate::sampling::CdfSampler;
 use crate::types::Real;
@@ -30,7 +31,55 @@ where
     }
 
     /// Factorize any input fallibly convertible into [`CsrRef`].
+    ///
+    /// Runs the same construction as [`Self::build_with_limit`] without accounting,
+    /// so it returns the same factor without its cost.
     pub fn build<'a, I, M>(&self, sddm: M) -> Result<Factor<T>, Error>
+    where
+        I: PrimInt + 'a + 'static,
+        M: TryInto<CsrRef<'a, T, I>>,
+        <M as TryInto<CsrRef<'a, T, I>>>::Error: Into<Error>,
+    {
+        self.build_accounted(sddm, &mut Unaccounted)
+    }
+
+    /// Factorize within a declared live construction payload.
+    ///
+    /// Every construction array, including reallocation overlap, the index copy,
+    /// a failed exact block's dense copy and the retained factor, is charged before
+    /// it is allocated. Exceeding `limit` returns
+    /// [`Error::ConstructionBudgetExceeded`] without the refused allocation and
+    /// without a factor. A successful build returns exactly the factor
+    /// [`Self::build`] returns, whatever the limit, with its peak and retained
+    /// payload. An allocator refusal of a dense exact copy still falls back as in
+    /// [`Self::build`]; any other refused reservation returns
+    /// [`Error::AllocationFailed`]. Construction is serial.
+    pub fn build_with_limit<'a, I, M>(
+        &self,
+        sddm: M,
+        limit: ConstructionLimit,
+    ) -> Result<(Factor<T>, ConstructionReport), Error>
+    where
+        I: PrimInt + 'a + 'static,
+        M: TryInto<CsrRef<'a, T, I>>,
+        <M as TryInto<CsrRef<'a, T, I>>>::Error: Into<Error>,
+    {
+        let mut ledger = Ledger::new(limit);
+        let factor = self.build_accounted(sddm, &mut ledger)?;
+        let report = ledger.report();
+        debug_assert_eq!(
+            factor.retained_heap_bytes(),
+            Some(report.retained_payload_bytes),
+            "every transient construction array is released"
+        );
+        Ok((factor, report))
+    }
+
+    fn build_accounted<'a, I, M>(
+        &self,
+        sddm: M,
+        account: &mut impl Account,
+    ) -> Result<Factor<T>, Error>
     where
         I: PrimInt + 'a + 'static,
         M: TryInto<CsrRef<'a, T, I>>,
@@ -39,18 +88,24 @@ where
         let csr = catch_unwind(AssertUnwindSafe(|| sddm.try_into()))
             .map_err(|_| Error::InvalidCsr(CsrError::InputConversionPanicked))?;
         let csr = csr.map_err(Into::into)?;
-        let narrowed = csr.narrow_indices()?;
-        self.build_validated(narrowed.with_values(csr.values()))
+        let narrowed = csr.narrow_indices_with(account)?;
+        let factor = self.build_validated(narrowed.with_values(csr.values()), account)?;
+        narrowed.free(account);
+        Ok(factor)
     }
 
     /// The multiplicity decides layout and split together, so each arm names one
     /// algorithm end to end.
-    fn build_validated(&self, sddm: CsrRef<'_, T, u32>) -> Result<Factor<T>, Error> {
+    fn build_validated(
+        &self,
+        sddm: CsrRef<'_, T, u32>,
+        ledger: &mut impl Account,
+    ) -> Result<Factor<T>, Error> {
         let original_n = sddm.n();
-        let ingestion = Ingestion::of(sddm)?;
+        let ingestion = Ingestion::of(sddm, ledger)?;
         match self.config.split_factor() {
-            None => self.factor_blocks::<Single>(ingestion, ()),
-            Some(k) => self.factor_blocks::<Multi>(ingestion, k),
+            None => self.factor_blocks::<Single>(ingestion, (), ledger),
+            Some(k) => self.factor_blocks::<Multi>(ingestion, k, ledger),
         }
         // The only scope holding both the caller's dimension and the finished factor.
         .inspect(|factor| debug_assert_eq!(factor.original_n(), original_n))
@@ -60,36 +115,48 @@ where
         &self,
         mut ingestion: Ingestion<'_, T>,
         split: C::Split,
+        ledger: &mut impl Account,
     ) -> Result<Factor<T>, Error> {
         if ingestion.n() == 0 {
+            ingestion.free(ledger);
             return Ok(Factor::empty());
         }
         let mut factorizer = BlockFactorizer::<T, C>::new(self.config, split);
         let Some(layout) = ingestion.take_layout() else {
             let whole = BlockVertices::whole(ingestion.n());
-            let (block, fallback) = factorizer.factor(&mut ingestion, &whole)?;
-            return Ok(Factor::from_blocks(
-                None,
-                vec![block],
-                fallback.into_iter().collect(),
-            ));
+            let (block, fallback) = factorizer.factor(&mut ingestion, &whole, ledger)?;
+            let mut blocks = ledger.with_capacity(1)?;
+            blocks.push(block);
+            let mut fallbacks = ledger.with_capacity(usize::from(fallback.is_some()))?;
+            fallbacks.extend(fallback);
+            factorizer.sampler.free(ledger);
+            ingestion.free(ledger);
+            return Ok(Factor::from_blocks(None, blocks, fallbacks));
         };
 
-        let mut blocks = Vec::with_capacity(layout.block_count());
+        let mut blocks = ledger.with_capacity(layout.block_count())?;
         let mut fallbacks = Vec::new();
         // Scratch reused across blocks; each view refills the entries it names.
-        let mut local_of = vec![0u32; ingestion.n()];
+        let mut local_of = ledger.filled(ingestion.n(), 0u32)?;
         for vertices in layout.blocks() {
             let view = BlockVertices::part(vertices, &mut local_of);
-            let (block, fallback) = factorizer.factor(&mut ingestion, &view)?;
+            let (block, fallback) = factorizer.factor(&mut ingestion, &view, ledger)?;
             blocks.push(block);
-            fallbacks.extend(fallback);
+            if let Some(fallback) = fallback {
+                ledger.push(&mut fallbacks, fallback)?;
+            }
         }
-        Ok(Factor::from_blocks(
-            Permutation::from_order(layout.into_order()),
-            blocks,
-            fallbacks,
-        ))
+        ledger.free(local_of);
+        factorizer.sampler.free(ledger);
+        ingestion.free(ledger);
+        let order = layout.into_order(ledger);
+        let capacity = order.capacity();
+        let permutation = Permutation::from_order(order);
+        if permutation.is_none() {
+            // The identity order is dropped rather than stored.
+            ledger.forget::<u32>(capacity);
+        }
+        Ok(Factor::from_blocks(permutation, blocks, fallbacks))
     }
 }
 
@@ -117,6 +184,7 @@ impl<T: Real, C: EdgeCount> BlockFactorizer<T, C> {
         &mut self,
         ingestion: &mut Ingestion<'_, T>,
         block: &BlockVertices<'_>,
+        ledger: &mut impl Account,
     ) -> Result<(Block<T>, Option<Fallback>), Error> {
         // Restarts for every block, routed or not, so one block's draws never shift
         // because another was factored exactly.
@@ -130,17 +198,18 @@ impl<T: Real, C: EdgeCount> BlockFactorizer<T, C> {
         };
         let mut fallback = None;
         if let Route::Exact { on_failure } = self.backend.route(dim) {
-            match exact::factor(ingestion, block, dim) {
+            match exact::factor(ingestion, block, dim, ledger) {
                 Ok(lower) => return Ok((Block::new(dim, anchor, Cholesky::Exact(lower)), None)),
+                Err(exact::NotFactorable::Refused(error)) => return Err(error),
                 Err(reason) => {
                     fallback = Some(on_failure.accept(reason.at(block))?);
                 }
             }
         }
-        let graph = ingestion.block_graph::<C>(block);
-        let diagonal = ingestion.take_block_diagonal(block);
+        let graph = ingestion.block_graph::<C>(block, ledger)?;
+        let diagonal = ingestion.take_block_diagonal(block, ledger)?;
         let sequence =
-            approximate::eliminate::<T, C>(graph, diagonal, &mut self.sampler, self.split);
+            approximate::eliminate::<T, C>(graph, diagonal, &mut self.sampler, self.split, ledger)?;
         Ok((
             Block::new(dim, anchor, Cholesky::Approximate(sequence)),
             fallback,

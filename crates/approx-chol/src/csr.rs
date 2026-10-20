@@ -1,3 +1,4 @@
+use crate::construction::Account;
 use crate::{CsrError, Error, IndexKind};
 use num_traits::{cast, PrimInt};
 
@@ -5,6 +6,22 @@ use num_traits::{cast, PrimInt};
 /// conversion grew the output by repeated doubling — 3.5x the traffic of the result.
 fn cast_slice<S: PrimInt, D: PrimInt>(src: &[S], kind: IndexKind) -> Result<Vec<D>, Error> {
     let mut out = Vec::with_capacity(src.len());
+    for &value in src {
+        out.push(
+            cast::<S, D>(value)
+                .ok_or(Error::InvalidCsr(CsrError::IndexExceedsIndexType { kind }))?,
+        );
+    }
+    Ok(out)
+}
+
+/// [`cast_slice`] with its one array charged to construction first.
+fn cast_slice_with<S: PrimInt, D: PrimInt>(
+    src: &[S],
+    kind: IndexKind,
+    ledger: &mut impl Account,
+) -> Result<Vec<D>, Error> {
+    let mut out = ledger.with_capacity(src.len())?;
     for &value in src {
         out.push(
             cast::<S, D>(value)
@@ -46,6 +63,12 @@ pub(crate) struct NarrowedCsr {
 }
 
 impl NarrowedCsr {
+    /// Release both index arrays from construction accounting.
+    pub(crate) fn free(self, ledger: &mut impl Account) {
+        ledger.free(self.row_ptrs);
+        ledger.free(self.col_indices);
+    }
+
     pub(crate) fn with_values<'a, T>(&'a self, values: &'a [T]) -> CsrRef<'a, T, u32> {
         CsrRef {
             row_ptrs: &self.row_ptrs,
@@ -139,6 +162,20 @@ impl<'a, T, I: PrimInt> CsrRef<'a, T, I> {
         Ok(NarrowedCsr {
             row_ptrs: cast_slice(self.row_ptrs, IndexKind::RowPtr)?,
             col_indices: cast_slice(self.col_indices, IndexKind::ColIndex)?,
+            n: self.n,
+        })
+    }
+
+    /// [`Self::narrow_indices`] with both copies charged to `ledger`.
+    pub(crate) fn narrow_indices_with(
+        &self,
+        ledger: &mut impl Account,
+    ) -> Result<NarrowedCsr, Error> {
+        let row_ptrs = cast_slice_with(self.row_ptrs, IndexKind::RowPtr, ledger)?;
+        let col_indices = cast_slice_with(self.col_indices, IndexKind::ColIndex, ledger)?;
+        Ok(NarrowedCsr {
+            row_ptrs,
+            col_indices,
             n: self.n,
         })
     }

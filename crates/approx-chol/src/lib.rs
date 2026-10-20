@@ -45,6 +45,7 @@
 #![warn(clippy::all)]
 
 mod approx_chol;
+mod construction;
 mod csr;
 mod error;
 pub(crate) mod graph;
@@ -58,6 +59,7 @@ pub mod low_level;
 #[cfg(feature = "serde")]
 pub use approx_chol::FACTOR_FORMAT_VERSION;
 pub use approx_chol::{Backend, Config, ExactFailure, Factor, Fallback, SolveError};
+pub use construction::{ConstructionLimit, ConstructionReport};
 pub use csr::{CsrRef, OwnedCsr};
 pub use error::{CsrError, DenseFailure, Error, IndexKind, UnusablePivot};
 

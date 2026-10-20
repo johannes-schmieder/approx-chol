@@ -1,5 +1,7 @@
 use super::multiplicity::{EdgeCount, Multi, SplitFactor};
+use crate::construction::Account;
 use crate::types::Real;
+use crate::Error;
 
 /// Carries the edge's multiplicity storage, so the AC path has no field to fill in.
 #[derive(Clone, Copy, Debug)]
@@ -15,10 +17,17 @@ struct BitVec {
 }
 
 impl BitVec {
+    #[cfg(test)]
     fn new(n: usize) -> Self {
         Self {
             words: vec![0u64; n.div_ceil(64)],
         }
+    }
+
+    fn new_with(n: usize, ledger: &mut impl Account) -> Result<Self, Error> {
+        Ok(Self {
+            words: ledger.filled(n.div_ceil(64), 0u64)?,
+        })
     }
 
     #[inline]
@@ -74,11 +83,38 @@ pub(crate) type MultiEdgeGraph<T> = AdjListGraph<Multi, T>;
 const RETAIN_ADJ_CAPACITY_MAX: usize = 64;
 
 impl<C: EdgeCount, T: Real> AdjListGraph<C, T> {
+    #[cfg(test)]
     pub(super) fn from_adjacency(adj: Vec<Vec<Edge<T, C>>>) -> Self {
         Self {
             eliminated: BitVec::new(adj.len()),
             adj,
         }
+    }
+
+    /// `adj` and every list in it must already be charged to `ledger`.
+    pub(super) fn from_adjacency_with(
+        adj: Vec<Vec<Edge<T, C>>>,
+        ledger: &mut impl Account,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            eliminated: BitVec::new_with(adj.len(), ledger)?,
+            adj,
+        })
+    }
+
+    /// Release every list, the outer array and the elimination bits.
+    pub(crate) fn free(self, ledger: &mut impl Account) {
+        for list in &self.adj {
+            ledger.forget::<Edge<T, C>>(list.capacity());
+        }
+        ledger.free(self.adj);
+        ledger.free(self.eliminated.words);
+    }
+
+    /// Stored entries of `v`'s list, stale ones included: a bound on any star
+    /// built from it.
+    pub(crate) fn list_len(&self, v: usize) -> usize {
+        self.adj[v].len()
     }
 
     /// Number of vertices (fixed at construction time).
@@ -110,7 +146,7 @@ impl<C: EdgeCount, T: Real> AdjListGraph<C, T> {
     }
 
     /// Mark `v` as eliminated and release its adjacency storage.
-    pub(crate) fn eliminate_vertex(&mut self, v: usize) {
+    pub(crate) fn eliminate_vertex(&mut self, v: usize, ledger: &mut impl Account) {
         self.eliminated.set(v);
         while let Some(edge) = self.adj[v].pop() {
             let u = edge.to as usize;
@@ -127,16 +163,22 @@ impl<C: EdgeCount, T: Real> AdjListGraph<C, T> {
             remove_edge_at(&mut self.adj, u, edge.rev as usize);
         }
         if self.adj[v].capacity() > RETAIN_ADJ_CAPACITY_MAX {
-            self.adj[v] = Vec::new();
+            ledger.free(core::mem::take(&mut self.adj[v]));
         }
     }
 
     /// Insert a symmetric fill edge between `u` and `v` with the given weight.
-    pub(crate) fn add_fill_edge(&mut self, u: u32, v: u32, weight: T) {
+    pub(crate) fn add_fill_edge(
+        &mut self,
+        u: u32,
+        v: u32,
+        weight: T,
+        ledger: &mut impl Account,
+    ) -> Result<(), Error> {
         if u == v {
-            return;
+            return Ok(());
         }
-        add_edge_pair(&mut self.adj, u as usize, v as usize, weight);
+        add_edge_pair(&mut self.adj, u as usize, v as usize, weight, ledger)
     }
 }
 
@@ -157,7 +199,8 @@ pub(super) fn add_edge_pair<T: Real, C: EdgeCount>(
     u: usize,
     v: usize,
     weight: T,
-) {
+    ledger: &mut impl Account,
+) -> Result<(), Error> {
     // Truncating a u32 reverse pointer would corrupt removal, so assert in release too.
     assert!(
         adj[u].len() < u32::MAX as usize && adj[v].len() < u32::MAX as usize,
@@ -165,8 +208,8 @@ pub(super) fn add_edge_pair<T: Real, C: EdgeCount>(
     );
     let rev_u = adj[v].len() as u32;
     let rev_v = adj[u].len() as u32;
-    adj[u].push(Edge::new(weight, v as u32, rev_u));
-    adj[v].push(Edge::new(weight, u as u32, rev_v));
+    ledger.push(&mut adj[u], Edge::new(weight, v as u32, rev_u))?;
+    ledger.push(&mut adj[v], Edge::new(weight, u as u32, rev_v))
 }
 
 /// Swap-remove, repairing the moved edge's reverse pointer.

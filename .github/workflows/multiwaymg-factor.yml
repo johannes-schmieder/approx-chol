@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85.0
       - uses: Swatinem/rust-cache@v2
-      - name: Isolated first, repeated, failure and capacity contracts
+      - name: Isolated scratch, capacity and checked-construction contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -49,10 +49,10 @@ jobs:
           git rev-parse HEAD > factor-evidence/metadata.txt
           echo "event=${{ github.event_name }} run=${{ github.run_id }}" >> factor-evidence/metadata.txt
           rustc -Vv >> factor-evidence/metadata.txt
-          cargo test --locked --manifest-path crates/approx-chol/Cargo.toml --all-features --test factor_scratch --test scratch_allocations 2>&1 | tee factor-evidence/debug-all.txt
-          cargo test --locked --manifest-path crates/approx-chol/Cargo.toml --no-default-features --test factor_scratch --test scratch_allocations 2>&1 | tee factor-evidence/debug-minimal.txt
-          cargo test --locked --release --manifest-path crates/approx-chol/Cargo.toml --all-features --test factor_scratch --test scratch_allocations 2>&1 | tee factor-evidence/release-all.txt
-          cargo test --locked --release --manifest-path crates/approx-chol/Cargo.toml --no-default-features --test factor_scratch --test scratch_allocations 2>&1 | tee factor-evidence/release-minimal.txt
+          cargo test --locked --manifest-path crates/approx-chol/Cargo.toml --all-features --test factor_scratch --test scratch_allocations --test construction_limit --test construction_allocations 2>&1 | tee factor-evidence/debug-all.txt
+          cargo test --locked --manifest-path crates/approx-chol/Cargo.toml --no-default-features --test factor_scratch --test scratch_allocations --test construction_limit --test construction_allocations 2>&1 | tee factor-evidence/debug-minimal.txt
+          cargo test --locked --release --manifest-path crates/approx-chol/Cargo.toml --all-features --test factor_scratch --test scratch_allocations --test construction_limit --test construction_allocations 2>&1 | tee factor-evidence/release-all.txt
+          cargo test --locked --release --manifest-path crates/approx-chol/Cargo.toml --no-default-features --test factor_scratch --test scratch_allocations --test construction_limit --test construction_allocations 2>&1 | tee factor-evidence/release-minimal.txt
           cargo test --locked --all-features --manifest-path qualification/factor-reference/Cargo.toml 2>&1 | tee factor-evidence/reference-debug-all.txt
           cargo test --locked --no-default-features --manifest-path qualification/factor-reference/Cargo.toml 2>&1 | tee factor-evidence/reference-debug-minimal.txt
           cargo test --locked --release --all-features --manifest-path qualification/factor-reference/Cargo.toml 2>&1 | tee factor-evidence/reference-release-all.txt

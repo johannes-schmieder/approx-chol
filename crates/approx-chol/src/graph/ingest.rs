@@ -7,6 +7,7 @@ mod validate;
 use super::adjacency::{add_edge_pair, AdjListGraph, Edge};
 use super::blocks::{BlockLayout, BlockVertices};
 use super::multiplicity::EdgeCount;
+use crate::construction::Account;
 use crate::types::Real;
 use crate::{CsrRef, Error};
 use canonical::Canonical;
@@ -23,13 +24,13 @@ pub(crate) struct Ingestion<'a, T> {
 }
 
 impl<'a, T: Real> Ingestion<'a, T> {
-    pub(crate) fn of(csr: CsrRef<'a, T, u32>) -> Result<Self, Error> {
-        let canonical = Canonical::of(csr)?;
+    pub(crate) fn of(csr: CsrRef<'a, T, u32>, ledger: &mut impl Account) -> Result<Self, Error> {
+        let canonical = Canonical::of(csr, ledger)?;
         let Ingested {
             diagonal,
             grounding,
             layout,
-        } = validate(&canonical)?;
+        } = validate(&canonical, ledger)?;
         Ok(Self {
             canonical,
             n: diagonal.len(),
@@ -37,6 +38,16 @@ impl<'a, T: Real> Ingestion<'a, T> {
             grounding,
             layout,
         })
+    }
+
+    /// Release every array still owned here; the layout must already be taken.
+    pub(crate) fn free(self, ledger: &mut impl Account) {
+        debug_assert!(self.layout.is_none(), "the layout is released by its taker");
+        self.canonical.free(ledger);
+        ledger.free(self.diagonal);
+        if let Grounding::Grounded { surpluses, .. } = self.grounding {
+            ledger.free(surpluses);
+        }
     }
 
     /// Vertices the factorization covers, the ground one included.
@@ -84,13 +95,23 @@ impl<'a, T: Real> Ingestion<'a, T> {
     }
 
     /// The whole graph is moved out: it is one block, so nothing reads it again.
-    pub(crate) fn take_block_diagonal(&mut self, block: &BlockVertices<'_>) -> Vec<T> {
+    pub(crate) fn take_block_diagonal(
+        &mut self,
+        block: &BlockVertices<'_>,
+        ledger: &mut impl Account,
+    ) -> Result<Vec<T>, Error> {
         match block {
-            BlockVertices::Whole(_) => core::mem::take(&mut self.diagonal),
-            BlockVertices::Part { vertices, .. } => vertices
-                .iter()
-                .map(|&vertex| self.diagonal[vertex as usize])
-                .collect(),
+            // Ownership moves with its charge; the emptied field releases nothing.
+            BlockVertices::Whole(_) => Ok(core::mem::take(&mut self.diagonal)),
+            BlockVertices::Part { vertices, .. } => {
+                let mut diagonal = ledger.with_capacity(vertices.len())?;
+                diagonal.extend(
+                    vertices
+                        .iter()
+                        .map(|&vertex| self.diagonal[vertex as usize]),
+                );
+                Ok(diagonal)
+            }
         }
     }
 
@@ -98,7 +119,8 @@ impl<'a, T: Real> Ingestion<'a, T> {
     pub(crate) fn block_graph<C: EdgeCount>(
         &self,
         block: &BlockVertices<'_>,
-    ) -> AdjListGraph<C, T> {
+        ledger: &mut impl Account,
+    ) -> Result<AdjListGraph<C, T>, Error> {
         let (row_ptrs, col_indices, values) = self.canonical.arrays();
         let rows = row_ptrs.len() - 1;
         let n = block.len();
@@ -108,7 +130,7 @@ impl<'a, T: Real> Ingestion<'a, T> {
             Grounding::Grounded { degree, .. } => degree,
         };
 
-        let mut adj: Vec<Vec<Edge<T, C>>> = Vec::with_capacity(n);
+        let mut adj: Vec<Vec<Edge<T, C>>> = ledger.with_capacity(n)?;
         for local in 0..n {
             let global = block.global(local);
             let degree = if global < rows {
@@ -116,7 +138,7 @@ impl<'a, T: Real> Ingestion<'a, T> {
             } else {
                 ground_degree
             };
-            adj.push(Vec::with_capacity(degree));
+            adj.push(ledger.with_capacity(degree)?);
         }
 
         // Measured: an in-loop discriminant test spills `local_of` and reloads per edge.
@@ -129,7 +151,7 @@ impl<'a, T: Real> Ingestion<'a, T> {
                     let (from, to) = (row_ptrs[local] as usize, row_ptrs[local + 1] as usize);
                     for (&col, &value) in col_indices[from..to].iter().zip(&values[from..to]) {
                         if col as usize > local && value != T::zero() {
-                            add_edge_pair(&mut adj, local, col as usize, -value);
+                            add_edge_pair(&mut adj, local, col as usize, -value, ledger)?;
                         }
                     }
                 }
@@ -145,7 +167,13 @@ impl<'a, T: Real> Ingestion<'a, T> {
                     let (from, to) = (row_ptrs[global] as usize, row_ptrs[global + 1] as usize);
                     for (&col, &value) in col_indices[from..to].iter().zip(&values[from..to]) {
                         if col as usize > global && value != T::zero() {
-                            add_edge_pair(&mut adj, local, local_of[col as usize] as usize, -value);
+                            add_edge_pair(
+                                &mut adj,
+                                local,
+                                local_of[col as usize] as usize,
+                                -value,
+                                ledger,
+                            )?;
                         }
                     }
                 }
@@ -158,13 +186,13 @@ impl<'a, T: Real> Ingestion<'a, T> {
                 for (row, &surplus) in surpluses.iter().enumerate() {
                     // The clamp in `ground` left every surplus non-negative.
                     if surplus > T::zero() {
-                        add_edge_pair(&mut adj, block.local(row), ground, surplus);
+                        add_edge_pair(&mut adj, block.local(row), ground, surplus, ledger)?;
                     }
                 }
             }
         }
 
-        AdjListGraph::from_adjacency(adj)
+        AdjListGraph::from_adjacency_with(adj, ledger)
     }
 }
 
