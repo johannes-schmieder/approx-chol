@@ -232,3 +232,29 @@ pub fn configs() -> Vec<(&'static str, Config)> {
         ),
     ]
 }
+
+/// Exact backends that report a failed dense factorization instead of falling back.
+pub fn exact_error_configs() -> Vec<(&'static str, Config)> {
+    let exact = |max_dim| Backend::ExactBelow {
+        max_dim,
+        on_failure: ExactFailure::Error,
+    };
+    vec![
+        (
+            "ac-exact-error",
+            Config {
+                seed: 7,
+                split_merge: None,
+                backend: exact(400),
+            },
+        ),
+        (
+            "ac2-mixed-error",
+            Config {
+                seed: 7,
+                split_merge: Some(2),
+                backend: exact(24),
+            },
+        ),
+    ]
+}

@@ -166,3 +166,21 @@ features. Each reservation allocates exactly the predicted bytes, and a repeat
 reservation allocates nothing. Reserved samples of several star sizes allocate
 nothing and match an unreserved sampler bit-for-bit. Drop frees exactly the
 reported capacity. Semver checks require no update.
+
+## Reported accounting on failure
+
+within tries an exact factor of a small reduced system under
+`ExactFailure::Error`. A `DenseFactorizationFailed` result there means build the
+complement differently and factor again, not abort. `build_with_limit` reports
+nothing for that failed attempt, so a caller's own ledger cannot know the peak it
+reached. The additive `build_with_limit_reported` returns the accounting with
+either outcome: the same factor and report as `build_with_limit` on success, or
+the error with the peak reached before failing and zero retained payload.
+
+`construction_limit` checks that every generated success matches
+`build_with_limit` exactly. Every refused build reports a peak within its limit.
+On the pivot-cancellation inputs, a failed exact attempt recurs as the same
+failure at a limit of exactly its reported peak and becomes a budget refusal one
+byte below. `construction_allocations` also measures the failed attempts: they
+release everything, and the allocator peak equals the reported peak (zero slack,
+debug and release).
