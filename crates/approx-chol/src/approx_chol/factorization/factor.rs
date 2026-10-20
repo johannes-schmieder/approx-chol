@@ -140,19 +140,20 @@ pub enum SolveError {
         /// Maximum accepted RHS length.
         factor_dim: usize,
     },
-    /// Permutation scratch smaller than [`Factor::permutation_scratch_len`].
-    ScratchBufferTooSmall {
-        /// Provided scratch length.
-        scratch_len: usize,
-        /// Required scalar count.
-        required: usize,
-    },
     /// Work buffer smaller than the factor dimension.
     WorkBufferTooSmall {
         /// Provided work length.
         work_len: usize,
         /// Factor dimension (`Factor::n()`).
         factor_dim: usize,
+    },
+    // Appended, not inserted: existing variants keep their published discriminants.
+    /// Permutation scratch smaller than [`Factor::permutation_scratch_len`].
+    ScratchBufferTooSmall {
+        /// Provided scratch length.
+        scratch_len: usize,
+        /// Required scalar count.
+        required: usize,
     },
 }
 
@@ -166,19 +167,19 @@ impl fmt::Display for SolveError {
                 f,
                 "rhs length {rhs_len} exceeds original matrix dimension {factor_dim}"
             ),
-            Self::ScratchBufferTooSmall {
-                scratch_len,
-                required,
-            } => write!(
-                f,
-                "permutation scratch too small: got {scratch_len}, need at least {required}"
-            ),
             Self::WorkBufferTooSmall {
                 work_len,
                 factor_dim,
             } => write!(
                 f,
                 "work buffer too small: got {work_len}, need at least {factor_dim}"
+            ),
+            Self::ScratchBufferTooSmall {
+                scratch_len,
+                required,
+            } => write!(
+                f,
+                "permutation scratch too small: got {scratch_len}, need at least {required}"
             ),
         }
     }

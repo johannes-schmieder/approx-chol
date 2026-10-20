@@ -75,3 +75,18 @@ are unchanged; the original failures remain in the qualification logs.
 All 13 local Rust1.85 required/release/reference groups pass. Exact source/PR
 CI, provider-verified platform artifacts and guarded merge remain required before
 downstream pinning. Local logs and input hashes: `qualification/local-checks.json`.
+
+## Discriminant repair
+
+The recovered source `60e6cfc` inserted `SolveError::ScratchBufferTooSmall` before
+`WorkBufferTooSmall`. That shifted the published variant's implicit discriminant
+from 1 to 2, and the inherited `cargo semver-checks` gate failed with
+`enum_no_repr_variant_discriminant_changed` against registry 0.5.0. The repair
+appends the new variant instead, so every published variant keeps its
+discriminant. Messages, fields and every caller are unchanged. The failure is
+reproduced and preserved, and the repaired source passes all 196 semver checks
+with "no semver update required". All 15 Rust 1.85.0 contract groups above pass
+again on Linux, and `cargo deny` passes. Its yanked `chacha20` warning is also
+present on the unchanged 0.5.0 baseline. Hashes:
+`qualification/local-checks-repair.json`. Exact source/PR CI and guarded merge
+still precede downstream pinning.
