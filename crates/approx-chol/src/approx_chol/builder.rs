@@ -75,6 +75,39 @@ where
         Ok((factor, report))
     }
 
+    /// [`Self::build_with_limit`], reporting the payload accounting whether or not
+    /// the build succeeds.
+    ///
+    /// A failed or refused build reports the peak live payload it reached before
+    /// failing and zero retained payload, since everything it allocated is
+    /// released. A caller composing its own budget around a build that may fail
+    /// and be retried differently, such as an exact attempt under
+    /// [`ExactFailure::Error`](crate::ExactFailure::Error), needs that peak. A
+    /// successful build returns exactly what [`Self::build_with_limit`] returns.
+    pub fn build_with_limit_reported<'a, I, M>(
+        &self,
+        sddm: M,
+        limit: ConstructionLimit,
+    ) -> (Result<Factor<T>, Error>, ConstructionReport)
+    where
+        I: PrimInt + 'a + 'static,
+        M: TryInto<CsrRef<'a, T, I>>,
+        <M as TryInto<CsrRef<'a, T, I>>>::Error: Into<Error>,
+    {
+        let mut ledger = Ledger::new(limit);
+        let built = self.build_accounted(sddm, &mut ledger);
+        let mut report = ledger.report();
+        match &built {
+            Ok(factor) => debug_assert_eq!(
+                factor.retained_heap_bytes(),
+                Some(report.retained_payload_bytes),
+                "every transient construction array is released"
+            ),
+            Err(_) => report.retained_payload_bytes = 0,
+        }
+        (built, report)
+    }
+
     fn build_accounted<'a, I, M>(
         &self,
         sddm: M,

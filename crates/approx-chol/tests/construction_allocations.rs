@@ -75,5 +75,38 @@ fn main() {
         }
     }
     assert_eq!(cases, 31 * 5);
-    println!("CONSTRUCTION_SUMMARY cases={cases} maximum_conservative_slack_bytes={slack_max}");
+
+    // A failed exact attempt releases everything and reports the peak it reached.
+    let mut failures = 0;
+    for g in generated() {
+        for (name, config) in exact_error_configs() {
+            let builder = Builder::<f64>::new(config);
+            let csr = CsrRef::new(&g.rows, &g.cols, &g.values, g.n as u32).unwrap();
+            let ((built, report), peak, retained) =
+                measure(|| builder.build_with_limit_reported(csr, ConstructionLimit::UNLIMITED));
+            match built {
+                Ok(factor) => {
+                    assert_eq!(retained, report.retained_payload_bytes as i64);
+                    drop(factor);
+                }
+                Err(error) => {
+                    assert!(matches!(error, Error::DenseFactorizationFailed { .. }));
+                    assert_eq!(retained, 0, "{} {name}: a failed build leaked", g.name);
+                    assert_eq!(report.retained_payload_bytes, 0);
+                    failures += 1;
+                }
+            }
+            assert!(
+                peak <= report.peak_payload_bytes,
+                "{} {name}: allocator peak {peak} exceeds reported peak {}",
+                g.name,
+                report.peak_payload_bytes
+            );
+            slack_max = slack_max.max(report.peak_payload_bytes - peak);
+        }
+    }
+    assert!(failures > 0, "a failed exact attempt is measured");
+    println!(
+        "CONSTRUCTION_SUMMARY cases={cases} failed_exact_attempts={failures} maximum_conservative_slack_bytes={slack_max}"
+    );
 }
