@@ -1,4 +1,6 @@
+use crate::construction::Account;
 use crate::graph::BlockLayout;
+use crate::Error;
 
 /// Union-find with path halving and union by size.
 pub(super) struct DisjointSets {
@@ -8,12 +10,17 @@ pub(super) struct DisjointSets {
 
 impl DisjointSets {
     /// Room for the ground vertex, so [`push`](Self::push) reallocates nothing.
-    pub(super) fn new(n: usize) -> Self {
-        let mut parent = Vec::with_capacity(n + 1);
+    pub(super) fn new(n: usize, ledger: &mut impl Account) -> Result<Self, Error> {
+        let mut parent = ledger.with_capacity(n + 1)?;
         parent.extend(0..n as u32);
-        let mut size = Vec::with_capacity(n + 1);
+        let mut size = ledger.with_capacity(n + 1)?;
         size.resize(n, 1);
-        Self { parent, size }
+        Ok(Self { parent, size })
+    }
+
+    pub(super) fn free(self, ledger: &mut impl Account) {
+        ledger.free(self.parent);
+        ledger.free(self.size);
     }
 
     /// Appends a vertex the CSR does not carry, and names it.
@@ -54,21 +61,24 @@ impl DisjointSets {
     }
 
     /// `None` when connected, which never pays for the counting sort below.
-    pub(super) fn layout(&mut self) -> Option<BlockLayout> {
+    pub(super) fn layout(
+        &mut self,
+        ledger: &mut impl Account,
+    ) -> Result<Option<BlockLayout>, Error> {
         let total = self.parent.len();
         if total == 0 || self.is_one_set() {
-            return None;
+            return Ok(None);
         }
 
         // Ascending, so blocks order by lowest member and the ground vertex lands last.
-        let mut block_of = vec![u32::MAX; total];
+        let mut block_of = ledger.filled(total, u32::MAX)?;
         let mut ends: Vec<u32> = Vec::new();
         for vertex in 0..total {
             let root = self.find(vertex as u32) as usize;
             let block = block_of[root];
             if block == u32::MAX {
                 block_of[root] = ends.len() as u32;
-                ends.push(1);
+                ledger.push(&mut ends, 1)?;
             } else {
                 ends[block as usize] += 1;
             }
@@ -81,12 +91,13 @@ impl DisjointSets {
             *count = start;
             start += n;
         }
-        let mut order = vec![0u32; total];
+        let mut order = ledger.filled(total, 0u32)?;
         for vertex in 0..total {
             let block = block_of[self.find(vertex as u32) as usize] as usize;
             order[ends[block] as usize] = vertex as u32;
             ends[block] += 1;
         }
-        Some(BlockLayout { order, ends })
+        ledger.free(block_of);
+        Ok(Some(BlockLayout { order, ends }))
     }
 }

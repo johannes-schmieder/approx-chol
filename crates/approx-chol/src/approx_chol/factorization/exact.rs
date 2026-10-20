@@ -2,20 +2,31 @@ use super::block::BlockDim;
 use super::factor::Fallback;
 #[cfg(any(feature = "serde", test))]
 use super::FactorError;
+use crate::construction::Account;
 use crate::graph::{BlockVertices, Ingestion};
 use crate::types::Real;
-use crate::{DenseFailure, UnusablePivot};
+use crate::{DenseFailure, Error, UnusablePivot};
 
 /// Why the dense backend declined a block, in that block's own numbering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NotFactorable {
-    InvalidPivot { pivot: usize, failure: DenseFailure },
-    WillNotFit { dim: usize },
+    InvalidPivot {
+        pivot: usize,
+        failure: DenseFailure,
+    },
+    WillNotFit {
+        dim: usize,
+    },
+    /// The declared construction limit refused the dense copy: fatal, never a fallback,
+    /// so a limit cannot change which factor a successful build returns.
+    Refused(Error),
 }
 
 impl NotFactorable {
+    /// Only the fallback causes; [`Self::Refused`] is raised by the caller instead.
     pub(crate) fn at(self, block: &BlockVertices<'_>) -> Fallback {
         match self {
+            Self::Refused(_) => unreachable!("a refused dense copy is fatal"),
             Self::InvalidPivot { pivot, failure } => Fallback::InvalidPivot(UnusablePivot {
                 vertex: block.global(pivot),
                 failure,
@@ -29,8 +40,14 @@ pub(crate) fn factor<T: Real>(
     ingestion: &Ingestion<'_, T>,
     block: &BlockVertices<'_>,
     dim: BlockDim,
+    ledger: &mut impl Account,
 ) -> Result<LowerTriangular<T>, NotFactorable> {
-    assemble(ingestion, block, dim.solved())?.factor_in_place()
+    let matrix = assemble(ingestion, block, dim.solved(), ledger)?;
+    let capacity = matrix.values.capacity();
+    // A failed pivot drops the dense copy before any fallback allocates.
+    matrix
+        .factor_in_place()
+        .inspect_err(|_| ledger.forget::<T>(capacity))
 }
 
 const fn row_start(row: usize) -> usize {
@@ -57,8 +74,9 @@ fn assemble<T: Real>(
     ingestion: &Ingestion<'_, T>,
     block: &BlockVertices<'_>,
     m: usize,
+    ledger: &mut impl Account,
 ) -> Result<LowerTriangular<T>, NotFactorable> {
-    let mut matrix = LowerTriangular::zeros(m)?;
+    let mut matrix = LowerTriangular::zeros(m, ledger)?;
     for row in 0..m {
         matrix.row_mut(row)[row] = ingestion.block_diagonal(block, row);
     }
@@ -107,14 +125,16 @@ impl<T> LowerTriangular<T> {
 }
 
 impl<T: Real> LowerTriangular<T> {
-    fn zeros(m: usize) -> Result<Self, NotFactorable> {
+    fn zeros(m: usize, ledger: &mut impl Account) -> Result<Self, NotFactorable> {
         let will_not_fit = NotFactorable::WillNotFit { dim: m };
-        let scalars = packed_len(m).ok_or(will_not_fit)?;
-        let mut values = Vec::new();
-        values
-            .try_reserve_exact(scalars)
-            .map_err(|_| will_not_fit)?;
-        values.resize(scalars, T::zero());
+        let scalars = packed_len(m).ok_or(will_not_fit.clone())?;
+        // An allocator refusal still falls back as before; a declared limit is fatal.
+        let values = ledger
+            .filled(scalars, T::zero())
+            .map_err(|error| match error {
+                Error::AllocationFailed { .. } => will_not_fit,
+                error => NotFactorable::Refused(error),
+            })?;
         Ok(Self { values })
     }
 

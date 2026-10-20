@@ -1,5 +1,8 @@
 //! Bucket priority queue over live degree estimates (ports Julia's `ApproxCholPQ`).
 
+use crate::construction::Account;
+use crate::Error;
+
 /// Linked-list terminator.
 const SENTINEL: u32 = u32::MAX;
 
@@ -129,11 +132,30 @@ pub(super) struct DegreeDeltas {
 }
 
 impl DegreeDeltas {
+    #[cfg(test)]
     pub(super) fn new(n: usize) -> Self {
         Self {
             buf: vec![0; n],
             touched: Vec::new(),
         }
+    }
+
+    pub(super) fn new_with(n: usize, ledger: &mut impl Account) -> Result<Self, Error> {
+        Ok(Self {
+            buf: ledger.filled(n, 0)?,
+            touched: Vec::new(),
+        })
+    }
+
+    /// Room for `adds` pending updates between flushes.
+    pub(super) fn reserve(&mut self, adds: usize, ledger: &mut impl Account) -> Result<(), Error> {
+        debug_assert!(self.touched.is_empty(), "reserved between flushes");
+        ledger.ensure(&mut self.touched, adds)
+    }
+
+    pub(super) fn free(self, ledger: &mut impl Account) {
+        ledger.free(self.buf);
+        ledger.free(self.touched);
     }
 
     #[inline]
@@ -169,14 +191,29 @@ impl DegreeDeltas {
 }
 
 impl DynamicOrdering {
+    #[cfg(test)]
     pub(super) fn new(degrees: &[usize], degree_scale: usize) -> Self {
+        let mut ledger = crate::construction::Unaccounted;
+        Self::new_with(degrees, degree_scale, &mut ledger).expect("unlimited test ordering")
+    }
+
+    pub(super) fn free(self, ledger: &mut impl Account) {
+        ledger.free(self.elems);
+        ledger.free(self.lists);
+    }
+
+    pub(super) fn new_with(
+        degrees: &[usize],
+        degree_scale: usize,
+        ledger: &mut impl Account,
+    ) -> Result<Self, Error> {
         let n = degrees.len();
         // Julia AC2 parity: keyMap uses `k = split*n`, bucket array length `2*k+1`.
         // Use scale=1 for standard AC.
         let bucket_base = degree_scale.saturating_mul(n).max(1);
         let n_lists = n_buckets(bucket_base);
-        let mut lists = vec![SENTINEL; n_lists];
-        let mut elems = Vec::with_capacity(n);
+        let mut lists = ledger.filled(n_lists, SENTINEL)?;
+        let mut elems = ledger.with_capacity(n)?;
         let mut min_list = n_lists;
         let mut n_items = 0;
 
@@ -203,13 +240,13 @@ impl DynamicOrdering {
             min_list = 0;
         }
 
-        DynamicOrdering {
+        Ok(DynamicOrdering {
             elems,
             lists,
             min_list,
             n_items,
             bucket_base,
-        }
+        })
     }
 }
 

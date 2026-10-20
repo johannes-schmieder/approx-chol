@@ -90,3 +90,54 @@ again on Linux, and `cargo deny` passes. Its yanked `chacha20` warning is also
 present on the unchanged 0.5.0 baseline. Hashes:
 `qualification/local-checks-repair.json`. Exact source/PR CI and guarded merge
 still precede downstream pinning.
+
+## Checked construction
+
+`Builder::build_with_limit(sddm, ConstructionLimit)` returns the factor with a
+`ConstructionReport` of peak and retained payload. Every construction array is
+charged to one ledger before allocation: the narrowed index copy, a non-canonical
+rewrite and its stable-sort scratch, mirror cursors, union-find, diagonal, row sums,
+ground growth, block layout, local maps, adjacency lists including every fill-edge
+growth, elimination bits, degrees, ordering buckets, star, dedup, sampler, column and
+degree-update scratch, the sequence output and the retained factor arrays. A growing
+array keeps its old capacity charged while the new one is allocated. A failed exact
+pivot releases its dense copy before the approximate fallback allocates. Exceeding
+the inclusive limit returns `Error::ConstructionBudgetExceeded` before the refused
+allocation, with no factor. A limit never changes a successful factor. An allocator
+refusal of a dense exact copy still falls back as `WillNotFit`, as in 0.5.0. Other
+refused reservations return `Error::AllocationFailed` instead of aborting. Both
+error variants are appended to the non-exhaustive `Error`, and semver checks pass.
+
+`build` runs the same generic construction with an unaccounted policy, so it pays
+no accounting cost. The per-step elimination scratch is bounded by the eliminated
+vertex's stored list: one doubling bound covers star, sampler, column, fill and
+degree-update arrays. Construction is serial and adds no threads or unsafe code.
+
+### Qualification
+
+The 31 generated inputs cover random sparse, floating, grid, hub stars above the
+scatter threshold, interleaved disconnected grounded components, non-canonical
+rows with split duplicates, and a natural exact-pivot cancellation fallback, with
+n up to 1,500. Five configurations cover AC, default, mixed AC2, AC3 and exact
+blocks up to 400.
+
+- `construction_limit`: all 155 f32/f64 builds are wire-identical to `build`
+  unlimited and at exactly the reported peak. Accounting is deterministic, and
+  every lower limit, from peak - 1 down to 0, refuses with the typed error.
+- `construction_allocations`: an isolated counting allocator, whose reallocation
+  counts old and new buffers together, measures each build. Across 155 builds, in
+  debug and release with all and no features, the real live-heap peak equals the
+  ledger peak with zero slack. Retained bytes equal the report and
+  `retained_heap_bytes()`, and dropping the factor frees exactly that. Refused
+  builds at peak - 1 and peak / 3 stay within the limit and leak nothing.
+- The isolated reference workspace compares all 155 generated builds,
+  unlimited and at peak, with registry 0.5.0 by serialized wire and finds them
+  bit-for-bit equal. The original 27-recipe contracts still pass.
+- An informational release timing on one Linux container (min of 30 rotated
+  runs, 40 approximate-route cases, n = 1,500) found `build` at 1.012 and
+  `build_with_limit` at 1.032 geometric-mean time relative to 0.5.0. The worst
+  checked case was 1.10 on hub stars. This is not a performance gate.
+
+This bounds construction inside approx-chol only. Within's Schur complement,
+cover assembly, parallel setup and solver-level overlap remain the next increment.
+Downstream pins still wait on reviewed merges.

@@ -1,5 +1,6 @@
 use super::canonical::Canonical;
 use super::sets::DisjointSets;
+use crate::construction::Account;
 use crate::graph::BlockLayout;
 use crate::types::{count_as_scalar, Real};
 use crate::{CsrError, Error};
@@ -13,14 +14,20 @@ struct Mirrors<'a, T> {
 }
 
 impl<'a, T: Real> Mirrors<'a, T> {
-    fn new(row_ptrs: &'a [u32], col_indices: &'a [u32], values: &'a [T]) -> Self {
-        let cursors = row_ptrs[..row_ptrs.len() - 1].to_vec();
-        Self {
+    fn new(
+        row_ptrs: &'a [u32],
+        col_indices: &'a [u32],
+        values: &'a [T],
+        ledger: &mut impl Account,
+    ) -> Result<Self, Error> {
+        let mut cursors = ledger.with_capacity(row_ptrs.len() - 1)?;
+        cursors.extend_from_slice(&row_ptrs[..row_ptrs.len() - 1]);
+        Ok(Self {
             row_ptrs,
             col_indices,
             values,
             cursors,
-        }
+        })
     }
 
     /// Stored zeros count as absent.
@@ -86,15 +93,18 @@ pub(super) enum Grounding<T> {
 
 /// Reads every stored entry exactly once, which is what lets [`Canonical::of`] leave
 /// finiteness here. Builds nothing: routing waits on the layout this pass feeds.
-pub(super) fn validate<T: Real>(canonical: &Canonical<'_, T>) -> Result<Ingested<T>, Error> {
+pub(super) fn validate<T: Real>(
+    canonical: &Canonical<'_, T>,
+    ledger: &mut impl Account,
+) -> Result<Ingested<T>, Error> {
     let (row_ptrs, col_indices, values) = canonical.arrays();
     let n = row_ptrs.len() - 1;
-    let mut mirrors = Mirrors::new(row_ptrs, col_indices, values);
+    let mut mirrors = Mirrors::new(row_ptrs, col_indices, values, ledger)?;
 
-    let mut sets = DisjointSets::new(n);
-    let mut diagonal = vec![T::zero(); n];
+    let mut sets = DisjointSets::new(n, ledger)?;
+    let mut diagonal = ledger.filled(n, T::zero())?;
     // Off-diagonal only; the diagonal joins in `ground`.
-    let mut row_sums = vec![T::zero(); n];
+    let mut row_sums = ledger.filled(n, T::zero())?;
 
     for row in 0..n {
         let row_end = row_ptrs[row + 1];
@@ -130,7 +140,8 @@ pub(super) fn validate<T: Real>(canonical: &Canonical<'_, T>) -> Result<Ingested
             root = sets.union_resolved(root, col as u32);
         }
     }
-    ground(diagonal, row_sums, canonical.terms(), sets)
+    ledger.free(mirrors.cursors);
+    ground(diagonal, row_sums, canonical.terms(), sets, ledger)
 }
 
 /// How far one row's diagonal exceeds its off-diagonal mass, judged against the noise
@@ -172,6 +183,7 @@ fn ground<T: Real>(
     mut row_sums: Vec<T>,
     terms: impl Iterator<Item = u32>,
     mut sets: DisjointSets,
+    ledger: &mut impl Account,
 ) -> Result<Ingested<T>, Error> {
     let mut total = T::zero();
     let mut degree = 0usize;
@@ -195,10 +207,13 @@ fn ground<T: Real>(
 
     let m = diagonal.len();
     if degree == 0 {
+        ledger.free(row_sums);
+        let layout = sets.layout(ledger)?;
+        sets.free(ledger);
         return Ok(Ingested {
             diagonal,
             grounding: Grounding::Floating,
-            layout: sets.layout(),
+            layout,
         });
     }
     if m >= u32::MAX as usize {
@@ -208,7 +223,7 @@ fn ground<T: Real>(
             },
         ));
     }
-    diagonal.push(total);
+    ledger.push(&mut diagonal, total)?;
     // Absent from the CSR, so the rows it closes are unioned through it here —
     // connectivity read from the CSR alone would hand each component back separately.
     let vertex = sets.push();
@@ -218,12 +233,14 @@ fn ground<T: Real>(
             root = sets.union_resolved(root, row as u32);
         }
     }
+    let layout = sets.layout(ledger)?;
+    sets.free(ledger);
     Ok(Ingested {
         diagonal,
         grounding: Grounding::Grounded {
             surpluses: row_sums,
             degree,
         },
-        layout: sets.layout(),
+        layout,
     })
 }

@@ -1,8 +1,10 @@
 use super::ordering::DegreeDeltas;
 use super::star::{Star, StarEntry};
+use crate::construction::Account;
 use crate::graph::{AdjListGraph, EdgeCount, Multi, Single, SplitFactor};
 use crate::sampling::CdfSampler;
 use crate::types::{count_as_scalar, Real};
+use crate::Error;
 
 /// One sampled column of the factor (Algorithm 5, GKS 2023), reused across steps.
 pub(super) struct SampledColumn<T: Real> {
@@ -21,6 +23,24 @@ impl<T: Real> SampledColumn<T> {
             fractions: Vec::new(),
             fill_edges: Vec::new(),
         }
+    }
+
+    /// Room for a column of `len` neighbors and `fill` sampled edges.
+    pub(super) fn reserve(
+        &mut self,
+        len: usize,
+        fill: usize,
+        ledger: &mut impl Account,
+    ) -> Result<(), Error> {
+        ledger.ensure(&mut self.neighbors, len)?;
+        ledger.ensure(&mut self.fractions, len)?;
+        ledger.ensure(&mut self.fill_edges, fill)
+    }
+
+    pub(super) fn free(self, ledger: &mut impl Account) {
+        ledger.free(self.neighbors);
+        ledger.free(self.fractions);
+        ledger.free(self.fill_edges);
     }
 
     fn clear(&mut self) {
@@ -92,14 +112,16 @@ impl<T: Real> SampledColumn<T> {
         graph: &mut AdjListGraph<C, T>,
         diag: &mut [T],
         deltas: &mut DegreeDeltas,
-    ) {
+        ledger: &mut impl Account,
+    ) -> Result<(), Error> {
         for &(u, w, weight) in &self.fill_edges {
-            graph.add_fill_edge(u, w, weight);
+            graph.add_fill_edge(u, w, weight, ledger)?;
             diag[u as usize] = diag[u as usize] + weight;
             diag[w as usize] = diag[w as usize] + weight;
             deltas.increase(u, 1);
             deltas.increase(w, 1);
         }
+        Ok(())
     }
 
     /// Generic in the count so `Single`'s literal 1 folds the copy loop away.

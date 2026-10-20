@@ -1,12 +1,19 @@
 use super::*;
+use crate::construction::Ledger;
 use crate::graph::Single;
+use crate::ConstructionLimit;
+
+fn ledger() -> Ledger {
+    Ledger::new(ConstructionLimit::UNLIMITED)
+}
 
 /// Blocks are what the layout says they are, in its own numbering.
 fn blocks_of(row_ptrs: &[u32], col_indices: &[u32], values: &[f64]) -> Option<Vec<Vec<u32>>> {
     let n = (row_ptrs.len() - 1) as u32;
     let csr = CsrRef::new(row_ptrs, col_indices, values, n).expect("valid CSR");
-    let canonical = Canonical::of(csr).expect("canonical");
-    validate(&canonical)
+    let mut ledger = ledger();
+    let canonical = Canonical::of(csr, &mut ledger).expect("canonical");
+    validate(&canonical, &mut ledger)
         .expect("valid SDDM")
         .layout
         .map(|layout| layout.blocks().map(<[u32]>::to_vec).collect::<Vec<_>>())
@@ -70,7 +77,8 @@ fn the_built_graph_agrees_with_the_layout() {
     let col_indices = [0u32, 1, 0, 1, 2, 3, 2, 3];
     let values = [5.0, -1.0, -1.0, 4.0, 1.0, -1.0, -1.0, 1.0];
     let csr = CsrRef::new(&row_ptrs, &col_indices, &values, 4).expect("valid CSR");
-    let mut ingestion = Ingestion::of(csr).expect("valid SDDM");
+    let mut ledger = ledger();
+    let mut ingestion = Ingestion::of(csr, &mut ledger).expect("valid SDDM");
     assert_eq!(ingestion.n(), 5);
 
     let layout = ingestion.take_layout().expect("two blocks");
@@ -83,7 +91,13 @@ fn the_built_graph_agrees_with_the_layout() {
         .map(|vertices| {
             let view = BlockVertices::part(vertices, &mut local_of);
             let carries = ingestion.carries_ground(&view);
-            (ingestion.block_graph::<Single>(&view).n(), carries)
+            (
+                ingestion
+                    .block_graph::<Single>(&view, &mut ledger)
+                    .expect("unlimited graph")
+                    .n(),
+                carries,
+            )
         })
         .collect();
     assert_eq!(

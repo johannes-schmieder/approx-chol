@@ -1,3 +1,4 @@
+use crate::construction::Account;
 use crate::types::Real;
 use crate::{CsrRef, Error};
 
@@ -12,7 +13,7 @@ pub(super) struct Canonical<'a, T> {
 impl<'a, T: Real> Canonical<'a, T> {
     /// Reads no value on the canonical path: `validate` checks each as it reads it,
     /// sparing a whole stream over the widest array.
-    pub(super) fn of(csr: CsrRef<'a, T, u32>) -> Result<Self, Error> {
+    pub(super) fn of(csr: CsrRef<'a, T, u32>, ledger: &mut impl Account) -> Result<Self, Error> {
         if is_canonical(csr.row_ptrs(), csr.col_indices()) {
             return Ok(Self {
                 input: csr,
@@ -25,8 +26,17 @@ impl<'a, T: Real> Canonical<'a, T> {
         }
         Ok(Self {
             input: csr,
-            rewritten: Some(rewrite(csr)?),
+            rewritten: Some(rewrite(csr, ledger)?),
         })
+    }
+
+    /// Release the rewritten copy, if any, from construction accounting.
+    pub(super) fn free(self, ledger: &mut impl Account) {
+        if let Some(rewritten) = self.rewritten {
+            ledger.free(rewritten.row_ptrs);
+            ledger.free(rewritten.col_indices);
+            ledger.free(rewritten.values);
+        }
     }
 
     pub(super) fn arrays(&self) -> (&[u32], &[u32], &[T]) {
@@ -69,18 +79,25 @@ struct Rewritten<T> {
 }
 
 /// Only non-canonical input pays this copy.
-fn rewrite<T: Real>(csr: CsrRef<'_, T, u32>) -> Result<Rewritten<T>, Error> {
+fn rewrite<T: Real>(
+    csr: CsrRef<'_, T, u32>,
+    ledger: &mut impl Account,
+) -> Result<Rewritten<T>, Error> {
     let nnz = csr.col_indices().len();
-    let mut row_ptrs = Vec::with_capacity(csr.n() + 1);
-    let mut col_indices = Vec::with_capacity(nnz);
-    let mut values = Vec::with_capacity(nnz);
+    let mut row_ptrs = ledger.with_capacity(csr.n() + 1)?;
+    let mut col_indices = ledger.with_capacity(nnz)?;
+    let mut values = ledger.with_capacity(nnz)?;
     let mut entries: Vec<(u32, T)> = Vec::new();
     row_ptrs.push(0u32);
     for (row, (cols, vals)) in csr.rows().enumerate() {
         entries.clear();
+        ledger.ensure(&mut entries, cols.len())?;
         entries.extend(cols.iter().copied().zip(vals.iter().copied()));
-        // One row's degree, not nnz. Stable, so duplicates sum in stored order.
+        // One row's degree, not nnz. Stable, so duplicates sum in stored order. The
+        // standard stable sort may allocate scratch of up to max(len, 48) elements.
+        let scratch = ledger.begin_transient::<(u32, T)>(entries.len().max(48))?;
         entries.sort_by_key(|&(col, _)| col);
+        ledger.end_transient(scratch);
         for group in entries.chunk_by(|left, right| left.0 == right.0) {
             let folded = group[1..].iter().fold(group[0].1, |sum, &(_, v)| sum + v);
             // Only this fold can overflow; caught here so downstream stays all-finite.
@@ -92,6 +109,7 @@ fn rewrite<T: Real>(csr: CsrRef<'_, T, u32>) -> Result<Rewritten<T>, Error> {
         }
         row_ptrs.push(col_indices.len() as u32);
     }
+    ledger.free(entries);
     Ok(Rewritten {
         row_ptrs,
         col_indices,

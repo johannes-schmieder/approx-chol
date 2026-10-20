@@ -40,6 +40,20 @@ pub enum Error {
 
     /// Exact dense Cholesky hit an unusable pivot and [`ExactFailure::Error`](crate::ExactFailure::Error) asked for that to fail.
     DenseFactorizationFailed(UnusablePivot),
+
+    /// Construction would exceed its declared live array payload; nothing was built.
+    ConstructionBudgetExceeded {
+        /// Live requested payload, including reallocation overlap, that was refused.
+        required: usize,
+        /// Declared [`ConstructionLimit`](crate::ConstructionLimit) ceiling.
+        limit: usize,
+    },
+
+    /// A construction array reservation within the declared limit failed.
+    AllocationFailed {
+        /// Requested capacity in bytes.
+        bytes: usize,
+    },
 }
 
 /// An exact dense Cholesky pivot that could not be used, and where it was. The same
@@ -261,6 +275,13 @@ impl fmt::Display for Error {
             ),
             Error::DenseFactorizationFailed(pivot) => {
                 write!(f, "exact dense Cholesky failed at {pivot}")
+            }
+            Error::ConstructionBudgetExceeded { required, limit } => write!(
+                f,
+                "construction needs {required} live payload bytes, limit is {limit}"
+            ),
+            Error::AllocationFailed { bytes } => {
+                write!(f, "construction could not reserve {bytes} bytes")
             }
         }
     }

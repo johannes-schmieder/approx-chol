@@ -72,6 +72,23 @@ impl<T> CdfSampler<T> {
     }
 }
 
+impl<T> CdfSampler<T> {
+    /// Room for a distribution of `len` neighbors.
+    pub(crate) fn reserve(
+        &mut self,
+        len: usize,
+        ledger: &mut impl crate::construction::Account,
+    ) -> Result<(), crate::Error> {
+        ledger.ensure(&mut self.neighbors, len)?;
+        ledger.ensure(&mut self.cumsum, len)
+    }
+
+    pub(crate) fn free(self, ledger: &mut impl crate::construction::Account) {
+        ledger.free(self.neighbors);
+        ledger.free(self.cumsum);
+    }
+}
+
 impl<T: Real> CdfSampler<T> {
     /// Takes the pairs rather than whatever holds them, so the sampler stays
     /// independent of how a caller stores a weighted neighborhood.

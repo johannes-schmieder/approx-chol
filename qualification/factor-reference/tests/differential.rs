@@ -187,3 +187,68 @@ pub fn reference<T: Float + Send + Sync + 'static>(
     )
     .unwrap()
 }
+
+#[path = "../../../crates/approx-chol/tests/construction_support/mod.rs"]
+mod construction_support;
+
+/// Checked construction over larger generated inputs reproduces the published factor.
+#[cfg(feature = "serde")]
+#[test]
+fn generated_inputs_match_original_under_every_limit() {
+    use approx_chol::{low_level::Builder, ConstructionLimit};
+    let mut compared = 0;
+    for g in construction_support::generated() {
+        for (name, config) in construction_support::configs() {
+            let csr = || approx_chol::CsrRef::new(&g.rows, &g.cols, &g.values, g.n as u32).unwrap();
+            let old = approx_chol_reference::factorize_with(
+                approx_chol_reference::CsrRef::new(&g.rows, &g.cols, &g.values, g.n as u32)
+                    .unwrap(),
+                approx_chol_reference::Config {
+                    seed: config.seed,
+                    split_merge: config.split_merge,
+                    backend: match config.backend {
+                        approx_chol::Backend::Approximate => {
+                            approx_chol_reference::Backend::Approximate
+                        }
+                        approx_chol::Backend::ExactBelow { max_dim, .. } => {
+                            approx_chol_reference::Backend::ExactBelow {
+                                max_dim,
+                                on_failure:
+                                    approx_chol_reference::ExactFailure::FallBackToApproximate,
+                            }
+                        }
+                        _ => unreachable!("generated configs use known backends"),
+                    },
+                },
+            )
+            .unwrap();
+            let expected = serde_json::to_value(&old).unwrap();
+            let builder = Builder::<f64>::new(config);
+            let (unlimited, report) = builder
+                .build_with_limit(csr(), ConstructionLimit::UNLIMITED)
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(&unlimited).unwrap(),
+                expected,
+                "{} {name}",
+                g.name
+            );
+            let (at_peak, _) = builder
+                .build_with_limit(
+                    csr(),
+                    ConstructionLimit {
+                        maximum_payload_bytes: report.peak_payload_bytes,
+                    },
+                )
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(&at_peak).unwrap(),
+                expected,
+                "{} {name}",
+                g.name
+            );
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 31 * 5);
+}

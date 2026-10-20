@@ -15,9 +15,11 @@ use clique_tree::{sample_column, SampledColumn};
 use ordering::{DegreeDeltas, DynamicOrdering};
 use star::StarBuilder;
 
+use crate::construction::Account;
 use crate::graph::{AdjListGraph, EdgeCount};
 use crate::sampling::CdfSampler;
 use crate::types::Real;
+use crate::Error;
 
 /// `C::Split` ties the split to the graph's multiplicity storage, so an AC
 /// factorization over a split multi-edge graph does not compile.
@@ -26,32 +28,50 @@ pub(crate) fn eliminate<T: Real, C: EdgeCount>(
     mut diag: Vec<T>,
     sampler: &mut CdfSampler<T>,
     split: C::Split,
-) -> EliminationSequence<T> {
+    ledger: &mut impl Account,
+) -> Result<EliminationSequence<T>, Error> {
     let n = graph.n();
     let copies = C::split_edges(&mut graph, split);
-    let degrees: Vec<usize> = (0..n).map(|v| graph.degree(v)).collect();
+    let mut degrees: Vec<usize> = ledger.with_capacity(n)?;
+    degrees.extend((0..n).map(|v| graph.degree(v)));
     let degree_sum: usize = degrees.iter().sum();
     let mut star_builder = StarBuilder::<T, C>::new(n, split);
-    let mut ordering = DynamicOrdering::new(&degrees, copies as usize);
+    let mut ordering = DynamicOrdering::new_with(&degrees, copies as usize, ledger)?;
+    ledger.free(degrees);
     let mut column = SampledColumn::<T>::new();
-    let mut seq = SequenceBuilder::with_capacity(n, degree_sum);
-    let mut deltas = DegreeDeltas::new(n);
+    let mut seq = SequenceBuilder::with_capacity(n, degree_sum, ledger)?;
+    let mut deltas = DegreeDeltas::new_with(n, ledger)?;
+    // Every per-step scratch size is bounded by the eliminated vertex's stored list:
+    // star entries by its length, sampled fill by `copies` per entry, and pending
+    // degree updates by one per entry plus two per fill edge. One doubling bound
+    // replaces per-array checks in the loop.
+    let per_entry_fill = copies as usize;
+    let mut bound = 0usize;
     for _ in 0..n.saturating_sub(1) {
         let v = ordering
             .next_vertex()
             .expect("the queue holds every vertex of the block");
+        let len = graph.list_len(v);
+        if len > bound {
+            bound = len.max(bound.saturating_mul(2));
+            let fill = bound.saturating_mul(per_entry_fill);
+            star_builder.reserve(bound, ledger)?;
+            column.reserve(bound, fill, ledger)?;
+            sampler.reserve(bound, ledger)?;
+            deltas.reserve(bound.saturating_add(fill.saturating_mul(2)), ledger)?;
+        }
         star_builder.build_star(&mut graph, v, &mut ordering);
         let star = star_builder.star();
         if star.entries().is_empty() {
-            seq.record_isolated(v, diag[v]);
-            graph.eliminate_vertex(v);
+            seq.record_isolated(v, diag[v], ledger)?;
+            graph.eliminate_vertex(v, ledger);
             continue;
         }
 
         sample_column(star, diag[v], sampler, &mut column);
-        seq.record_column(v, &column);
+        seq.record_column(v, &column, ledger)?;
 
-        graph.eliminate_vertex(v);
+        graph.eliminate_vertex(v, ledger);
         for entry in star.entries() {
             let u = entry.neighbor as usize;
             diag[u] = diag[u] - entry.weight;
@@ -60,18 +80,23 @@ pub(crate) fn eliminate<T: Real, C: EdgeCount>(
         // One pq_move per affected neighbor, not one per incident event. Batching
         // reorders equal-degree vertices, so a fixed seed's factor differs from a
         // per-edge version's (quality unaffected; see CHANGELOG).
-        column.apply_fill_in_delta(&mut graph, &mut diag, &mut deltas);
+        column.apply_fill_in_delta(&mut graph, &mut diag, &mut deltas, ledger)?;
         star.accumulate_removal_delta(&mut deltas);
         deltas.flush(&mut ordering);
     }
 
     // One step short of `n`, so the queue still holds the vertex no step eliminated —
     // the block's last, which is what the anchor pins, only when it has no other.
-    seq.finish(
-        ordering
-            .next_vertex()
-            .expect("the queue holds every vertex of the block") as u32,
-    )
+    let uneliminated = ordering
+        .next_vertex()
+        .expect("the queue holds every vertex of the block") as u32;
+    graph.free(ledger);
+    ledger.free(diag);
+    star_builder.free(ledger);
+    ordering.free(ledger);
+    column.free(ledger);
+    deltas.free(ledger);
+    Ok(seq.finish(uneliminated))
 }
 
 /// Zero-copy view of one elimination step.
@@ -394,12 +419,16 @@ struct SequenceBuilder<T> {
 }
 
 impl<T: Real> SequenceBuilder<T> {
-    fn with_capacity(n: usize, degree_sum: usize) -> Self {
-        Self {
-            steps: Vec::with_capacity(n),
-            neighbor_indices: Vec::with_capacity(degree_sum),
-            elimination_fractions: Vec::with_capacity(degree_sum),
-        }
+    fn with_capacity(
+        n: usize,
+        degree_sum: usize,
+        ledger: &mut impl Account,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            steps: ledger.with_capacity(n)?,
+            neighbor_indices: ledger.with_capacity(degree_sum)?,
+            elimination_fractions: ledger.with_capacity(degree_sum)?,
+        })
     }
 
     fn finish(self, uneliminated: u32) -> EliminationSequence<T> {
@@ -413,12 +442,18 @@ impl<T: Real> SequenceBuilder<T> {
 
     /// Overflowing the `u32` range end is unreachable for tractable inputs, so assert
     /// in release too rather than truncate silently.
-    fn push_step(&mut self, vertex: usize, diagonal: T) {
+    fn push_step(
+        &mut self,
+        vertex: usize,
+        diagonal: T,
+        ledger: &mut impl Account,
+    ) -> Result<(), Error> {
         let nnz = self.neighbor_indices.len();
         assert!(
             nnz <= u32::MAX as usize,
             "factor nonzero count {nnz} exceeds u32 range capacity"
         );
+        ledger.reserve(&mut self.steps, 1)?;
         self.steps.push(StepHeader {
             vertex: vertex as u32,
             end: nnz as u32,
@@ -429,18 +464,31 @@ impl<T: Real> SequenceBuilder<T> {
                 _ => T::one(),
             },
         });
+        Ok(())
     }
 
-    fn record_isolated(&mut self, vertex: usize, diagonal: T) {
-        self.push_step(vertex, diagonal);
+    fn record_isolated(
+        &mut self,
+        vertex: usize,
+        diagonal: T,
+        ledger: &mut impl Account,
+    ) -> Result<(), Error> {
+        self.push_step(vertex, diagonal, ledger)
     }
 
     /// Takes the column, not its parts: [`SampledColumn`] is what keeps a neighbor
     /// array from being stored against a fraction array of another length.
-    fn record_column(&mut self, vertex: usize, column: &SampledColumn<T>) {
+    fn record_column(
+        &mut self,
+        vertex: usize,
+        column: &SampledColumn<T>,
+        ledger: &mut impl Account,
+    ) -> Result<(), Error> {
         let (neighbors, fractions) = column.pattern();
+        ledger.reserve(&mut self.neighbor_indices, neighbors.len())?;
+        ledger.reserve(&mut self.elimination_fractions, fractions.len())?;
         self.neighbor_indices.extend_from_slice(neighbors);
         self.elimination_fractions.extend_from_slice(fractions);
-        self.push_step(vertex, column.diagonal);
+        self.push_step(vertex, column.diagonal, ledger)
     }
 }

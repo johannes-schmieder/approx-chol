@@ -22,8 +22,9 @@ impl BlockLayout {
         })
     }
 
-    /// The same sequence read as a permutation.
-    pub(crate) fn into_order(self) -> Vec<u32> {
+    /// The same sequence read as a permutation; the block ends are released.
+    pub(crate) fn into_order(self, ledger: &mut impl crate::construction::Account) -> Vec<u32> {
+        ledger.free(self.ends);
         self.order
     }
 }

@@ -1,6 +1,8 @@
 use super::ordering::{DegreeDeltas, DynamicOrdering};
+use crate::construction::Account;
 use crate::graph::{AdjListGraph, EdgeCount, Neighbor};
 use crate::types::{float_total_cmp, Real};
+use crate::Error;
 use core::cmp::Ordering;
 
 /// Copies are stored the way the graph stores them, so a single-copy layout spends no
@@ -57,6 +59,22 @@ impl<T: Real, C: EdgeCount> Star<T, C> {
     fn clear(&mut self) {
         self.entries.clear();
         self.removed_copies.clear();
+    }
+
+    /// Room for a star of up to `len` entries, so building one never reallocates.
+    fn reserve(&mut self, len: usize, ledger: &mut impl Account) -> Result<(), Error> {
+        ledger.ensure(&mut self.entries, len)?;
+        ledger.ensure(&mut self.removed_copies, len)?;
+        if !C::SINGLE_COPY {
+            ledger.ensure(&mut self.sort_scratch, len)?;
+        }
+        Ok(())
+    }
+
+    fn free(self, ledger: &mut impl Account) {
+        ledger.free(self.entries);
+        ledger.free(self.removed_copies);
+        ledger.free(self.sort_scratch);
     }
 
     fn push(&mut self, entry: StarEntry<T, C>) {
@@ -142,12 +160,33 @@ impl<T: Real, C: EdgeCount> StarBuilder<T, C> {
         }
     }
 
+    pub(super) fn free(self, ledger: &mut impl Account) {
+        self.star.free(ledger);
+        ledger.free(self.dedup.raw);
+        ledger.free(self.dedup.scratch.scatter);
+        ledger.free(self.dedup.scratch.counts);
+        ledger.free(self.dedup.scratch.unique);
+    }
+
+    /// Room to build a star from any stored list of up to `len` entries, so
+    /// [`Self::build_star`] never grows an array.
+    pub(super) fn reserve(&mut self, len: usize, ledger: &mut impl Account) -> Result<(), Error> {
+        ledger.ensure(&mut self.dedup.raw, len)?;
+        self.star.reserve(len, ledger)?;
+        if len > SCATTER_THRESHOLD {
+            self.dedup.scratch.reserve(len, ledger)?;
+        }
+        Ok(())
+    }
+
+    /// Callers [`reserve`](Self::reserve) for `v`'s stored list length first.
     pub(super) fn build_star(
         &mut self,
         graph: &mut AdjListGraph<C, T>,
         v: usize,
         ordering: &mut DynamicOrdering,
     ) {
+        debug_assert!(self.dedup.raw.capacity() >= graph.list_len(v));
         self.dedup.collect(graph, v);
         self.dedup.dedup(&mut self.star, self.split);
         apply_removed_copies(self.star.removed_copies(), ordering);
@@ -179,6 +218,15 @@ impl<T: Real> DedupScratch<T> {
             unique: Vec::new(),
             n,
         }
+    }
+
+    /// Dense arrays at full width plus room for `len` unique neighbors.
+    fn reserve(&mut self, len: usize, ledger: &mut impl Account) -> Result<(), Error> {
+        if self.scatter.len() < self.n {
+            ledger.ensure(&mut self.scatter, self.n)?;
+            ledger.ensure(&mut self.counts, self.n)?;
+        }
+        ledger.ensure(&mut self.unique, len)
     }
 
     fn begin_pass(&mut self) {
