@@ -63,7 +63,7 @@ fn low_level_builder_is_generic_over_index_and_scalar_types() {
 
 struct PanicIntoCsr;
 
-impl<'a> From<PanicIntoCsr> for CsrRef<'a, f64, u32> {
+impl From<PanicIntoCsr> for CsrRef<'_, f64, u32> {
     fn from(_: PanicIntoCsr) -> Self {
         panic!("boom during conversion");
     }

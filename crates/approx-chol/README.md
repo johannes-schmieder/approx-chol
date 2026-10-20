@@ -71,3 +71,7 @@ This crate is licensed under `MIT`.
 - Gao, Yuan; Kyng, Rasmus; Spielman, Daniel (2025). *AC(k): Robust Solution of Laplacian Equations by Randomized Approximate Cholesky Factorization.* SIAM Journal on Scientific Computing.
 - Gao, Kyng & Spielman (2023). *Robust and Practical Solution of Laplacian Equations by Approximate Elimination.* <https://arxiv.org/abs/2303.00709>
 - Kyng & Sachdeva (2016). *Approximate Gaussian Elimination for Laplacians — Fast, Sparse, and Simple.* <https://arxiv.org/abs/1605.02353>
+
+## MultiwayMG owner fork
+
+The dedicated fork adds [caller-owned solve scratch and checked retained-capacity reporting](../../docs/MULTIWAYMG_FACTOR.md) while preserving existing numerical kernels and serialization. Construction admission and downstream solver integration remain separate work.

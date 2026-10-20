@@ -1,0 +1,17 @@
+[package]
+name = "multiwaymg-factor-reference"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+[workspace]
+
+[features]
+serde = ["approx-chol/serde"]
+
+[dependencies]
+approx-chol = { path = "../../crates/approx-chol" }
+approx-chol-reference = { package = "approx-chol", version = "=0.5.0", features = ["serde"] }
+num-traits = "0.2"
+serde_json = "1"

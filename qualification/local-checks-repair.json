@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "baseline": "36f07b1dfc6300deb790a29053a56d8718dede54",
+  "recovered_source": "60e6cfc072be3ae2c37daa166717df6ffd9bb5b7",
+  "platform": "Linux x86-64 cloud container",
+  "rustc": "rustc 1.85.0 (4d91de4e4 2025-02-17)",
+  "note": "Repair appends SolveError::ScratchBufferTooSmall after WorkBufferTooSmall. semver-60e6cfc reproduces the inherited failure (enum_no_repr_variant_discriminant_changed); the repaired source passes 196 checks. The cargo-deny yanked chacha20 warning also occurs on the unchanged 36f07b1 baseline. Raw logs are kept outside the repository; hashes identify them.",
+  "checks": [
+    {
+      "name": "fmt",
+      "command": "cargo fmt --all -- --check",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "977af6beaa4355940778eb9609299c55414968702ad4f7fcdf7bbf4c76b61f72"
+    },
+    {
+      "name": "test-all",
+      "command": "cargo test --locked --workspace --all-features",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "f85670f291d55aa97ee5f0a4491c7ed89b2574a162a8049834513bb6a22300c4"
+    },
+    {
+      "name": "test-min",
+      "command": "cargo test --locked --workspace --no-default-features",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "31b8c08eba518835ed957411e1786ac8ab0c0dd7e2fa1ab1185d415bb0b88997"
+    },
+    {
+      "name": "fmt-ref",
+      "command": "cargo fmt --manifest-path qualification/factor-reference/Cargo.toml -- --check",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "clippy-ref",
+      "command": "cargo clippy --locked --manifest-path qualification/factor-reference/Cargo.toml --all-targets --all-features -- -D warnings",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "39b7378acaf1707a133e2ca554b76b7c63740f73daa8f4f806bcc01a7f524f78"
+    },
+    {
+      "name": "doc",
+      "command": "RUSTDOCFLAGS='-D warnings' cargo doc --locked --workspace --all-features --no-deps",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "2a96b00246d98409d96dbd5ddc206f71051e8617db55789804edb7ddb806aec2"
+    },
+    {
+      "name": "alloc--all-features",
+      "command": "cargo test --locked --manifest-path crates/approx-chol/Cargo.toml --all-features --test factor_scratch --test scratch_allocations",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "02e47f3b1ac9bc537ca22829303931db20a85ca08d38a008b506ceb95e74be2e"
+    },
+    {
+      "name": "ref--all-features",
+      "command": "cargo test --locked --all-features --manifest-path qualification/factor-reference/Cargo.toml",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "7040a21024020f76c44fd9716c22391b473bdb2a62ff2cf821410d7bcf3eb6a4"
+    },
+    {
+      "name": "alloc--no-default-features",
+      "command": "cargo test --locked --manifest-path crates/approx-chol/Cargo.toml --no-default-features --test factor_scratch --test scratch_allocations",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "de7c99948f40bf55c3a6650376ba4b215b88a85cf40d7f6ef29dfca9793d58b9"
+    },
+    {
+      "name": "ref--no-default-features",
+      "command": "cargo test --locked --no-default-features --manifest-path qualification/factor-reference/Cargo.toml",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "2f375d105f4afe0101358e90b58ddc4f7a006f091eefde09c82e0d21f52d43a6"
+    },
+    {
+      "name": "alloc--release--all-features",
+      "command": "cargo test --locked --release --manifest-path crates/approx-chol/Cargo.toml --all-features --test factor_scratch --test scratch_allocations",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "1fe4fe07d5351473b16bab21b4bb8e537b8cf46e24a94da77cbefdb4d7fbac7c"
+    },
+    {
+      "name": "ref--release--all-features",
+      "command": "cargo test --locked --release --all-features --manifest-path qualification/factor-reference/Cargo.toml",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "e17c968408bb334fa30f3a5604d1e0b2d00d0f236f9335a8a7681f5c2b3a987e"
+    },
+    {
+      "name": "alloc--release--no-default-features",
+      "command": "cargo test --locked --release --manifest-path crates/approx-chol/Cargo.toml --no-default-features --test factor_scratch --test scratch_allocations",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "c51b43a87371412ea67b81381efd81cc68cdace2ae2d00e72d68e4e09442ed52"
+    },
+    {
+      "name": "ref--release--no-default-features",
+      "command": "cargo test --locked --release --no-default-features --manifest-path qualification/factor-reference/Cargo.toml",
+      "toolchain": "1.85.0",
+      "exit_code": 0,
+      "sha256": "139e6915b0a227861656fd089d1407b85621c9d13cb9b008ccf38d66b7c1d412"
+    },
+    {
+      "name": "semver-60e6cfc",
+      "command": "cargo semver-checks --package approx-chol --all-features (source 60e6cfc)",
+      "toolchain": "stable 1.97.0; cargo-semver-checks 0.49.0; cargo-deny 0.20.2",
+      "exit_code": 100,
+      "sha256": "31683fc0d8d27ed19c63b87131dfd81fd8d2a7ae533fd931adb4b9ffaa1e47f3"
+    },
+    {
+      "name": "semver-repaired",
+      "command": "cargo semver-checks --package approx-chol --all-features",
+      "toolchain": "stable 1.97.0; cargo-semver-checks 0.49.0; cargo-deny 0.20.2",
+      "exit_code": 0,
+      "sha256": "0870f793ef0f52fe8be6ce7b7d4253496e056f6fb3a67175289483cc1711fd92"
+    },
+    {
+      "name": "deny-repaired",
+      "command": "cargo deny --locked check",
+      "toolchain": "stable 1.97.0; cargo-semver-checks 0.49.0; cargo-deny 0.20.2",
+      "exit_code": 0,
+      "sha256": "81c7b4305828c03a1e169289776a498f8e0b94059d6fe1f1ec866e7ac5e32dd8"
+    }
+  ]
+}

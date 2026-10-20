@@ -95,3 +95,21 @@ impl fmt::Display for FactorError {
         write!(f, "corrupted persisted factor: {self:?}")
     }
 }
+
+// Central checked byte arithmetic for the post-build capacity inventory.
+fn capacity_bytes<T>(capacity: usize) -> Option<usize> {
+    capacity.checked_mul(core::mem::size_of::<T>())
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::capacity_bytes;
+
+    #[test]
+    fn byte_counts_are_checked_before_summing() {
+        assert_eq!(capacity_bytes::<f64>(usize::MAX), None);
+        assert_eq!(capacity_bytes::<u32>(0), Some(0));
+        assert_eq!(capacity_bytes::<f64>(7), Some(56));
+        assert_eq!(capacity_bytes::<()>(usize::MAX), Some(0));
+    }
+}

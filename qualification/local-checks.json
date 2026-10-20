@@ -1,0 +1,292 @@
+{
+  "baseline": "36f07b1dfc6300deb790a29053a56d8718dede54",
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/fmt.txt",
+      "name": "fmt",
+      "seconds": 0.08713837503455579,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "qualification/factor-reference/Cargo.toml",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/fmt-reference.txt",
+      "name": "fmt-reference",
+      "seconds": 0.031020332826301455,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/clippy.txt",
+      "name": "clippy",
+      "seconds": 0.17682820814661682,
+      "sha256": "5dfc6696c6ca7784b94889956c057d5429ac2bb9e998cddb4310ab00036d5132"
+    },
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--manifest-path",
+        "qualification/factor-reference/Cargo.toml",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/clippy-reference.txt",
+      "name": "clippy-reference",
+      "seconds": 1.4285997080150992,
+      "sha256": "986e31cbc3d2223b93f45379aa357d3eec90fd6f1caa81f68df5f3dd132ac30f"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace",
+        "--all-features"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/workspace-all.txt",
+      "name": "workspace-all",
+      "seconds": 16.771371791139245,
+      "sha256": "ace8d3d99d93df9038ad4e58d930c5b54ce5bff2c06b101294d6c8d1ac135179"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace",
+        "--no-default-features"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/workspace-minimal.txt",
+      "name": "workspace-minimal",
+      "seconds": 6.153676250018179,
+      "sha256": "f4f6f6d744d0bf9d78db137df707ca170d26a11b5b9372a48aa33c4c884bebd1"
+    },
+    {
+      "command": [
+        "cargo",
+        "doc",
+        "--locked",
+        "--workspace",
+        "--all-features",
+        "--no-deps"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/docs.txt",
+      "name": "docs",
+      "seconds": 11.818289916031063,
+      "sha256": "986dd943e15a3a754839e81e77846c98467b29644afe9bcedcd5a40fdbc39cdb"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "qualification/factor-reference/Cargo.toml",
+        "--all-features"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/reference-debug-all-features.txt",
+      "name": "reference-debug-all-features",
+      "seconds": 0.9239581250585616,
+      "sha256": "8b9f098684c36a63dba9f8b862f7922f82fb684795d8db8d8b0fc16e41fcdbb0"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "qualification/factor-reference/Cargo.toml",
+        "--no-default-features"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/reference-debug-no-default-features.txt",
+      "name": "reference-debug-no-default-features",
+      "seconds": 1.2130899999756366,
+      "sha256": "14ed6938a0f85bf2a8dbcee20906e021f415eeebfba948d596a8d168918435a2"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "crates/approx-chol/Cargo.toml",
+        "--all-features"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/release-all-features.txt",
+      "name": "release-all-features",
+      "seconds": 81.24754933291115,
+      "sha256": "35e462e31f4879ae321516d9d7f459512b26eb8ec352e7a75c092bc8b4535e1f"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "qualification/factor-reference/Cargo.toml",
+        "--all-features"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/reference-release-all-features.txt",
+      "name": "reference-release-all-features",
+      "seconds": 5.714456457877532,
+      "sha256": "5ba906f260a7be1d4b960190c84510f9021a464788191f10ebb7a98613545db6"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "crates/approx-chol/Cargo.toml",
+        "--no-default-features"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/release-no-default-features.txt",
+      "name": "release-no-default-features",
+      "seconds": 24.589664165861905,
+      "sha256": "646172c351e2c69c191f3b3d641fd76c5e919cc057a060f92da3ade0969339bd"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "qualification/factor-reference/Cargo.toml",
+        "--no-default-features"
+      ],
+      "exit_code": 0,
+      "log": "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v3/reference-release-no-default-features.txt",
+      "name": "reference-release-no-default-features",
+      "seconds": 1.759418292203918,
+      "sha256": "d1f3d391229b1d41167343dc71a497bb35bae0b860b8c365ffa6fa25e4e6e432"
+    }
+  ],
+  "input_sha256": {
+    ".github/workflows/multiwaymg-factor.yml": "31f77ae3a2c7be0db0f6d324d1fb92e3272a1101ac4759776f74c3f80b3fccaf",
+    "Cargo.lock": "dd9085d395514ec4944a352fc571fb80d64769d2329e725367b7031c0e063941",
+    "Cargo.toml": "4e56f891fbf6bd121254745fd994d79393b01acdaff5a35cb0020450591e0753",
+    "crates/approx-chol-py/src/lib.rs": "2a309c5f7246a55a2006c7b46f1547dd4b5786cebfe512e355aee95ce217afe3",
+    "crates/approx-chol/Cargo.toml": "edfc1073c9a30057699f6db14f67f01554ab33dd0e4f10ac6b0fb319a1d3a5db",
+    "crates/approx-chol/benches/backend.rs": "4c9d697a2edf722d1f333b7b3662f783bdec28a234c80df2c69ac20603ad3aa4",
+    "crates/approx-chol/benches/common/mod.rs": "6f42424c836e0a3ad41d22a1d538eb2b7430261f3b1a1262c6e5533af62e20a5",
+    "crates/approx-chol/benches/factorization.rs": "fd7a60f4e527541b7e05ba32374e34c0740c19582f4dbfe1e3e4982be92e4676",
+    "crates/approx-chol/benches/sampling.rs": "2ef0f48a52254a3b2a70d2979d29189b91355d5bac580a42221e5e63fdab4bae",
+    "crates/approx-chol/benches/smoke.rs": "131c2495a4b13921d83cdacf23d91869c6a94d85c3028b4a7c1e22285da5fc60",
+    "crates/approx-chol/benches/solve.rs": "ec5fda05bfac91211924db514e4ce609ca1c615bf8cbe4ec7e7fbcdc6b448396",
+    "crates/approx-chol/benches/wallclock_banded.rs": "077b1a98ede3650efc8facc76f24d4d605af87a4a0014dd2710eff171599942c",
+    "crates/approx-chol/examples/ac2_config.rs": "f5a9108147a3b837729eba16513bff4dc948e143834aeefeea1837e313b7d497",
+    "crates/approx-chol/examples/basic_solve.rs": "4bf270a884a5a45901e1053cb460f231e1386102a79dadfc9cd12e6d9b3c0329",
+    "crates/approx-chol/examples/shared/mod.rs": "a45dca7e4d5dee325e8e37b3dfad3a17e7cb8995e1bef2ea7dde8dae8ca27810",
+    "crates/approx-chol/src/approx_chol.rs": "f4e13b8c967153c4d2d1117214128bbe3b80983e7bd8ec5189768ec5a2ed9e54",
+    "crates/approx-chol/src/approx_chol/builder.rs": "4df21ede429b9a8531a6bc757c15b4d8a50250538b692668c5563dbfb35da612",
+    "crates/approx-chol/src/approx_chol/builder/tests.rs": "13144944eca90ecf49908ff5f346f6f37825bc6153f14b1e6754cffc5fac1322",
+    "crates/approx-chol/src/approx_chol/config.rs": "33134f5777d067f96595a1586b224e851b3b8fbd8731c25e49abcb6c01d3541b",
+    "crates/approx-chol/src/approx_chol/factorization.rs": "d8f6857faf83e166471b78a785c8624868ae7d62d98f8b8a058064184b21076b",
+    "crates/approx-chol/src/approx_chol/factorization/anchor.rs": "580a0fb5712dd61bbcf076742dc142f39db0552a6f22bcb68d32c0103c9b2998",
+    "crates/approx-chol/src/approx_chol/factorization/approximate.rs": "3145809ead0bfa861a5455c682b71430ac028d6bc4755c530674250c36f48fb4",
+    "crates/approx-chol/src/approx_chol/factorization/approximate/clique_tree.rs": "e33b2ec8820644e8a96b4e56e9af2697a748f0a13adba61c57b78f0acf8380ce",
+    "crates/approx-chol/src/approx_chol/factorization/approximate/ordering.rs": "322e84ef1b4a58f82f4efce0ef8084ab37c9a414842f45fdbc282d6b771b329f",
+    "crates/approx-chol/src/approx_chol/factorization/approximate/star.rs": "239d062fe6174521c9d38b0b394aa9349c182ab1b112f9709aa8390041afd81e",
+    "crates/approx-chol/src/approx_chol/factorization/approximate/star/tests.rs": "a6662dbae97b13b8e912293e4cb762456d20c80e09d636083dc01648b1309a8e",
+    "crates/approx-chol/src/approx_chol/factorization/block.rs": "801100facc8a65668f1deef4079a232bea4f01493363ddf3d2a24e5a29e2738d",
+    "crates/approx-chol/src/approx_chol/factorization/block/tests.rs": "edacdf5aa354297b477a2652add74f83163f580d4ce2d3fc4cd95f89e856d9cd",
+    "crates/approx-chol/src/approx_chol/factorization/cholesky.rs": "384eb23637ea41b99d764e2847a204b6f131a56b30d9481f5f53937d70e5bc63",
+    "crates/approx-chol/src/approx_chol/factorization/exact.rs": "69f64f6121a779cd0bc4c4affc511fccee0789653e4041e33cac98ebecf498ea",
+    "crates/approx-chol/src/approx_chol/factorization/factor.rs": "7ce713dd71cc08d89f1f52280c589d1da708c6cc15d8f36b85aea92c4509232d",
+    "crates/approx-chol/src/approx_chol/factorization/factor/tests.rs": "690409482c8bea8253d3f615674d3f8c36c6e9342746e08ef0ca9816b6fe265e",
+    "crates/approx-chol/src/approx_chol/factorization/permutation.rs": "31524e51991ecd73d75868eb86c16de7cd06031a9790dd6ed35e42a102275097",
+    "crates/approx-chol/src/csr.rs": "e4a9eb0dbeb99a6e427fd76370c00368805ccb3982fb48f629fa50d33861b375",
+    "crates/approx-chol/src/error.rs": "df236db5d7c176f21ba69c24e345ec37cb90f2cf13e5dfce4c7c59ccfeda22b4",
+    "crates/approx-chol/src/graph.rs": "41e58f9f004cd2d121e3d1b9a24245f7b5d84f799aa02c3c4666768bcd20726b",
+    "crates/approx-chol/src/graph/adjacency.rs": "e5d808c915882dfc4dd3a902c959e554cd3218308cc7467184fd05ebff0f066b",
+    "crates/approx-chol/src/graph/blocks.rs": "dcad544b9f189e6bb64f892f043e2c345e2594a0bf275cb5a0b2d442341000dd",
+    "crates/approx-chol/src/graph/ingest.rs": "8dab3306642d9d9a79f17261e85a181eebfb73e8a3fbf4733398728919b0a9b9",
+    "crates/approx-chol/src/graph/ingest/canonical.rs": "5bf5cc3c3a15220b2737f8ab8612666654397acf87c287ba6e510e9550709ca3",
+    "crates/approx-chol/src/graph/ingest/sets.rs": "b80beebfef6ab4c33ddf8c7cfa02af00de4dadc491209111024333d9b3359400",
+    "crates/approx-chol/src/graph/ingest/tests.rs": "947677a91f0e0d8698bb15672e33765dff01e00805da8c6363805a4ea92f5445",
+    "crates/approx-chol/src/graph/ingest/validate.rs": "7a674944e0cdf56ddcfbd6517b24e68b50ac19369292cfb981244d157eb33ba1",
+    "crates/approx-chol/src/graph/multiplicity.rs": "7383f34bb1443f50227c3a66e0e634cec7f5a39caf2692a43b25a4ac48a83c8c",
+    "crates/approx-chol/src/lib.rs": "66d5437162bad287a3a0c89228290951c8c91215886612b506ae23f326c62533",
+    "crates/approx-chol/src/low_level.rs": "c3616dd6cf022d924f7708b169e2122a0b2494f5e66ca26b560e7d48d5c98319",
+    "crates/approx-chol/src/sampling.rs": "aaace6a37a902a532373a0e2b5f3214b6bca9ea98ed7498342586d715e81c267",
+    "crates/approx-chol/src/test_utils.rs": "ba024efc8baae203a3a9fb81c66f9596839f378fc12f66d0720060d07943b253",
+    "crates/approx-chol/src/types.rs": "26291f2a3021086c3655db9f1750c84bc47482aa5f5229496a54052130e880bf",
+    "crates/approx-chol/tests/common/backends.rs": "8b9fb780803ed679ce407a711c568ce77aac514505d41a2314822a14f51d56ac",
+    "crates/approx-chol/tests/common/grid.rs": "e091862810e2545607391427c705f6d4b50df1b67f62401cbee44a64d0b0a218",
+    "crates/approx-chol/tests/common/laplacian_prop.rs": "8247373401bf6e6b7a9a00ba4a4e1240139485e83b50a90e44f96785bfb7a067",
+    "crates/approx-chol/tests/common/path.rs": "e48e771185e22b73be4555952192e32aa87e02be815994118b640c2dcb0e9e4e",
+    "crates/approx-chol/tests/common/path_solve.rs": "fb1eb165a0809dde86a1d343a5d6e9ddd763438813c195a6f2bb090ef7c1a863",
+    "crates/approx-chol/tests/common/residual.rs": "28051d3a562250cd0cf02ecb46e1ca1e7f3f697079c5b8a66ee876d6cd866be1",
+    "crates/approx-chol/tests/exact_backend.rs": "58f85ccb3268bf939c5ced94d502fb9c271330cf19dc65a690cf8fe3e5c9ba3d",
+    "crates/approx-chol/tests/factor_scratch.rs": "3669a4dee7abe4cf18e504e31fd427c9c749a013df2be9a849884a5a4c50876c",
+    "crates/approx-chol/tests/faer_integration.rs": "dd9959c4353323aa35ed26392c99d6d65d1d6ffe52b15a265f89cccfcf84458a",
+    "crates/approx-chol/tests/generic_low_level_api.rs": "984e24c7fd2975cad25ea843153f16c599b00da61a101823f4057763a1e49c0e",
+    "crates/approx-chol/tests/ingestion_regressions.rs": "f6be00e454dc0df2ff18ceaa412103dd05bae9c1c7d456e99370799c7f27a6fb",
+    "crates/approx-chol/tests/metamorphic.rs": "d62229abf9ab29385982fb296659d0e806b0db7bde457126ad871ebbb9ff182d",
+    "crates/approx-chol/tests/property_csr.rs": "eafa5e2d8d419bc3a3ca8cfd51b0d7489f42cdb3a3418a2fe1a07467eb85dbd6",
+    "crates/approx-chol/tests/property_factorization.rs": "a10ec2262c4e5addd46f429ea5d649a44d551eb896a45f3165cb8c6d9711aa9f",
+    "crates/approx-chol/tests/scale_invariance.rs": "0e6e8be21d1ffcb1a88280a617ea569ea54126e22727132a98016ef1f3a4f37b",
+    "crates/approx-chol/tests/scratch_allocations.rs": "fc1f018dc8f2bff21bf8da9f793cecf6ed60cdfb700b23a3764aa3025df3cd96",
+    "crates/approx-chol/tests/scratch_support/mod.rs": "1e161135ba45956f9ec9a4b59ce4f5c88e0ff207f7c7caa0f33c1fc84e1d1f58",
+    "crates/approx-chol/tests/serde_roundtrip.rs": "593674e9da258e467f145df48a0ff16808ee87d07e7728f190e20154ab06a50a",
+    "crates/approx-chol/tests/smoke_ac_ac2.rs": "962bda4d69f482321c790a9eca73d200e9d1d70b3156f477da598c82dee376e1",
+    "crates/approx-chol/tests/solve_quality.rs": "fa2095f0dd18adb1477099ce6fb4113dd8e3173acfa193b4982fec782aa0a1d6",
+    "crates/approx-chol/tests/sprs_integration.rs": "d0f39f80708bb49022286fd7a832541c502799b98e8552a632a5f4f1bbe62500",
+    "crates/approx-chol/tests/wire_format.rs": "c6d23cf67ce8bb55315a21693ab9356ca43e9831ad816a623ef483d1352160b3",
+    "qualification/factor-reference/Cargo.lock": "bd33d184258196ae6b5c88f1e1e72f9ea66627ff22c9219017a9c321167e5bcd",
+    "qualification/factor-reference/Cargo.toml": "9ffd23518959e509cbbe7eeabfeb5dc97d9c6610c6f7563f9d8787649b812ef0",
+    "qualification/factor-reference/tests/differential.rs": "642bb3a6310ca560a9fe8f3181c7f23beed5e901a87e10a0767b7d0a6b9adb40"
+  },
+  "preserved_preflight_logs": {
+    "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v1/clippy.txt": "f6f6304d7c29f2f6ef09124241b4f27e3ddd0202b8bf6e26ae632760cc090e07",
+    "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/checks-v2/clippy.txt": "eed95b27f1139ca30ab10de75565e50c631bdaf19390f552d5b373453451f803",
+    "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/first-check-online.log": "46922c98dff3c1ea318b2af86684ed58c0aa5c087264bad89678f4c703acbeea",
+    "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/first-check.log": "c99f57ebefe5badb4a5ec8ffec41e103114c1f19d3cb1d12bb90193705d88aa7",
+    "/Users/johannes/Git/MultiwayMG-assessments/2026-09-19-m6p/second-check.log": "b0c8695fb1ae0e07ad3fe583ebd7786a582ad6a001dcaf86d56a104a916c9dc2"
+  },
+  "scope": "local Rust1.85; not cross-platform or complete terminal qualification"
+}
