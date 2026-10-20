@@ -43,6 +43,30 @@ impl<T: Real> SampledColumn<T> {
         ledger.free(self.fill_edges);
     }
 
+    /// Grow the column to `len` neighbors and `fill` sampled edges exactly.
+    fn reserve_exactly(
+        &mut self,
+        len: usize,
+        fill: usize,
+    ) -> Result<(), std::collections::TryReserveError> {
+        reserve_exactly(&mut self.neighbors, len)?;
+        reserve_exactly(&mut self.fractions, len)?;
+        reserve_exactly(&mut self.fill_edges, fill)
+    }
+
+    fn capacity_bytes(&self) -> Option<usize> {
+        use core::mem::size_of;
+        self.neighbors
+            .capacity()
+            .checked_mul(size_of::<u32>())?
+            .checked_add(self.fractions.capacity().checked_mul(size_of::<T>())?)?
+            .checked_add(
+                self.fill_edges
+                    .capacity()
+                    .checked_mul(size_of::<(u32, u32, T)>())?,
+            )
+    }
+
     fn clear(&mut self) {
         self.diagonal = T::zero();
         self.neighbors.clear();
@@ -241,10 +265,34 @@ enum StarScratch<T: Real> {
 /// The elimination path dedupes through its workspace; a standalone caller promises it
 /// instead. A repeat splits one edge's weight across two clique-tree positions and ties
 /// with itself, so it under-weights the fill rather than failing.
-fn neighbors_are_unique<T>(entries: &[(u32, T)]) -> bool {
-    let mut seen: Vec<u32> = entries.iter().map(|&(neighbor, _)| neighbor).collect();
+#[cfg(debug_assertions)]
+fn neighbors_are_unique<T>(entries: &[(u32, T)], seen: &mut Vec<u32>) -> bool {
+    seen.clear();
+    seen.extend(entries.iter().map(|&(neighbor, _)| neighbor));
     seen.sort_unstable();
     seen.windows(2).all(|pair| pair[0] != pair[1])
+}
+
+/// Requested bytes to grow an array of `capacity` elements of `size` bytes to
+/// `target` elements exactly; zero when it already fits.
+fn growth_bytes(capacity: usize, size: usize, target: usize) -> Option<usize> {
+    if capacity >= target {
+        Some(0)
+    } else {
+        target.checked_mul(size)
+    }
+}
+
+/// Grow `values` to `target` elements exactly, discarding stale scratch contents.
+fn reserve_exactly<V>(
+    values: &mut Vec<V>,
+    target: usize,
+) -> Result<(), std::collections::TryReserveError> {
+    if values.capacity() < target {
+        values.clear();
+        values.try_reserve_exact(target)?;
+    }
+    Ok(())
 }
 
 /// Samples one star's clique tree at a time — the sparse stand-in for its Schur
@@ -258,6 +306,9 @@ pub struct CliqueTreeSampler<T: num_traits::Float + Send + Sync + 'static = f64>
     star: StarScratch<T>,
     draws: CdfSampler<T>,
     column: SampledColumn<T>,
+    /// The debug-build uniqueness check's buffer, reserved with the rest.
+    #[cfg(debug_assertions)]
+    seen: Vec<u32>,
 }
 
 impl<T: num_traits::Float + Send + Sync + 'static> CliqueTreeSampler<T> {
@@ -271,15 +322,111 @@ impl<T: num_traits::Float + Send + Sync + 'static> CliqueTreeSampler<T> {
             },
             draws: CdfSampler::new(seed),
             column: SampledColumn::new(),
+            #[cfg(debug_assertions)]
+            seen: Vec::new(),
         }
+    }
+
+    /// Copies each entry is split into; one for standard AC.
+    fn copies(&self) -> usize {
+        match &self.star {
+            StarScratch::Single(_) => 1,
+            StarScratch::Multi(_, copies) => copies.get() as usize,
+        }
+    }
+
+    /// Most fill edges [`Self::sample`] appends for a star of `entries` neighbors:
+    /// `k * (entries - 1)`, saturating. Reserve this much room in its `out` first.
+    pub fn max_fill_edges(&self, entries: usize) -> usize {
+        self.copies().saturating_mul(entries.saturating_sub(1))
+    }
+
+    /// Bytes [`Self::try_reserve`] would newly request for stars of up to
+    /// `max_entries` neighbors: the full new capacity of each scratch array that is
+    /// currently smaller, zero when already reserved. `None` on overflow. The old
+    /// buffers of arrays that grow stay live until the new ones are allocated.
+    pub fn reservation_bytes(&self, max_entries: usize) -> Option<usize> {
+        use core::mem::size_of;
+        let fill = self.max_fill_edges(max_entries);
+        let star = match &self.star {
+            StarScratch::Single(star) => star.entries_growth_bytes(max_entries)?,
+            StarScratch::Multi(star, _) => star.entries_growth_bytes(max_entries)?,
+        };
+        let (neighbors, cumsum) = self.draws.capacities();
+        let mut total = star;
+        for bytes in [
+            growth_bytes(neighbors, size_of::<u32>(), max_entries)?,
+            growth_bytes(cumsum, size_of::<T>(), max_entries)?,
+            growth_bytes(
+                self.column.neighbors.capacity(),
+                size_of::<u32>(),
+                max_entries,
+            )?,
+            growth_bytes(
+                self.column.fractions.capacity(),
+                size_of::<T>(),
+                max_entries,
+            )?,
+            growth_bytes(
+                self.column.fill_edges.capacity(),
+                size_of::<(u32, u32, T)>(),
+                fill,
+            )?,
+            #[cfg(debug_assertions)]
+            growth_bytes(self.seen.capacity(), size_of::<u32>(), max_entries)?,
+        ] {
+            total = total.checked_add(bytes)?;
+        }
+        Some(total)
+    }
+
+    /// Reserve scratch so that [`Self::sample`] on stars of up to `max_entries`
+    /// neighbors never allocates, given `out` has [`Self::max_fill_edges`] spare
+    /// room. Requests exactly [`Self::reservation_bytes`]. On failure no sample
+    /// result changes; the scratch is only partly grown.
+    pub fn try_reserve(
+        &mut self,
+        max_entries: usize,
+    ) -> Result<(), std::collections::TryReserveError> {
+        let fill = self.max_fill_edges(max_entries);
+        match &mut self.star {
+            StarScratch::Single(star) => reserve_exactly(star.uniform_entries(), max_entries)?,
+            StarScratch::Multi(star, _) => reserve_exactly(star.uniform_entries(), max_entries)?,
+        }
+        let (neighbors, cumsum) = self.draws.arrays();
+        reserve_exactly(neighbors, max_entries)?;
+        reserve_exactly(cumsum, max_entries)?;
+        self.column.reserve_exactly(max_entries, fill)?;
+        #[cfg(debug_assertions)]
+        reserve_exactly(&mut self.seen, max_entries)?;
+        Ok(())
+    }
+
+    /// Checked retained heap capacity of all scratch in bytes, `None` on overflow.
+    pub fn retained_heap_bytes(&self) -> Option<usize> {
+        let star = match &self.star {
+            StarScratch::Single(star) => star.capacity_bytes()?,
+            StarScratch::Multi(star, _) => star.capacity_bytes()?,
+        };
+        let total = star
+            .checked_add(self.draws.capacity_bytes()?)?
+            .checked_add(self.column.capacity_bytes()?)?;
+        #[cfg(debug_assertions)]
+        let total = total.checked_add(
+            self.seen
+                .capacity()
+                .checked_mul(core::mem::size_of::<u32>())?,
+        )?;
+        Some(total)
     }
 
     /// Appends at most `k * (n-1)` fill edges to `out`, for a star of deduplicated
     /// `entries`. `index` names the stream, so the same index answers alike whatever
     /// order the caller eliminates in.
     pub fn sample(&mut self, index: u64, entries: &[(u32, T)], out: &mut Vec<(u32, u32, T)>) {
-        debug_assert!(
-            neighbors_are_unique(entries),
+        #[cfg(debug_assertions)]
+        assert!(
+            neighbors_are_unique(entries, &mut self.seen),
             "a star needs one entry per neighbor"
         );
         self.draws.restart(index);
