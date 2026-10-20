@@ -70,3 +70,7 @@ harness = false
 [[test]]
 name = "construction_allocations"
 harness = false
+
+[[test]]
+name = "sampler_reservation"
+harness = false

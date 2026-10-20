@@ -61,6 +61,38 @@ impl<T: Real, C: EdgeCount> Star<T, C> {
         self.removed_copies.clear();
     }
 
+    /// Entry capacity, the only array [`Self::refill_uniform`] fills.
+    pub(super) fn uniform_entries(&mut self) -> &mut Vec<StarEntry<T, C>> {
+        &mut self.entries
+    }
+
+    /// Requested bytes to grow the entry array to `target` exactly; zero when it fits.
+    pub(super) fn entries_growth_bytes(&self, target: usize) -> Option<usize> {
+        if self.entries.capacity() >= target {
+            Some(0)
+        } else {
+            target.checked_mul(core::mem::size_of::<StarEntry<T, C>>())
+        }
+    }
+
+    /// Checked capacity bytes of every scratch array.
+    pub(super) fn capacity_bytes(&self) -> Option<usize> {
+        use core::mem::size_of;
+        self.entries
+            .capacity()
+            .checked_mul(size_of::<StarEntry<T, C>>())?
+            .checked_add(
+                self.removed_copies
+                    .capacity()
+                    .checked_mul(size_of::<(u32, u32)>())?,
+            )?
+            .checked_add(
+                self.sort_scratch
+                    .capacity()
+                    .checked_mul(size_of::<(T, StarEntry<T, C>)>())?,
+            )
+    }
+
     /// Room for a star of up to `len` entries, so building one never reallocates.
     fn reserve(&mut self, len: usize, ledger: &mut impl Account) -> Result<(), Error> {
         ledger.ensure(&mut self.entries, len)?;

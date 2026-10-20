@@ -141,3 +141,28 @@ blocks up to 400.
 This bounds construction inside approx-chol only. Within's Schur complement,
 cover assembly, parallel setup and solver-level overlap remain the next increment.
 Downstream pins still wait on reviewed merges.
+
+## Reserved clique-tree sampling
+
+within's sampled Schur complement calls the public `CliqueTreeSampler` once per
+eliminated star. Its star, distribution and column scratch grew inside the
+library, out of reach of any caller's accounting. In debug builds, its neighbor-
+uniqueness check also allocated on every call. The sampler now exposes:
+
+- `max_fill_edges(entries)`: the `k * (entries - 1)` bound on edges one `sample`
+  appends, which the caller reserves in its `out`.
+- `reservation_bytes(max_entries)`: the exact bytes `try_reserve` will newly
+  request; zero when already reserved.
+- `try_reserve(max_entries)`: grows every scratch array exactly, so that
+  `sample` on stars of up to that many neighbors never allocates.
+- `retained_heap_bytes()`: checked scratch capacity.
+
+The debug-only uniqueness check now uses a reserved buffer. Sampling arithmetic,
+draws and outputs are unchanged.
+
+`sampler_reservation` (isolated counting allocator) covers AC, AC2 and AC3 at
+reservations of 0, 1, 2, 33 and 200 neighbors in debug/release with all and no
+features. Each reservation allocates exactly the predicted bytes, and a repeat
+reservation allocates nothing. Reserved samples of several star sizes allocate
+nothing and match an unreserved sampler bit-for-bit. Drop frees exactly the
+reported capacity. Semver checks require no update.

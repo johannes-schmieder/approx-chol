@@ -83,6 +83,28 @@ impl<T> CdfSampler<T> {
         ledger.ensure(&mut self.cumsum, len)
     }
 
+    /// The two distribution arrays, for a caller-managed exact reservation.
+    pub(crate) fn arrays(&mut self) -> (&mut Vec<u32>, &mut Vec<T>) {
+        (&mut self.neighbors, &mut self.cumsum)
+    }
+
+    /// Capacities of the neighbor and cumulative-weight arrays.
+    pub(crate) fn capacities(&self) -> (usize, usize) {
+        (self.neighbors.capacity(), self.cumsum.capacity())
+    }
+
+    /// Checked capacity bytes of the two distribution arrays.
+    pub(crate) fn capacity_bytes(&self) -> Option<usize> {
+        self.neighbors
+            .capacity()
+            .checked_mul(core::mem::size_of::<u32>())?
+            .checked_add(
+                self.cumsum
+                    .capacity()
+                    .checked_mul(core::mem::size_of::<T>())?,
+            )
+    }
+
     pub(crate) fn free(self, ledger: &mut impl crate::construction::Account) {
         ledger.free(self.neighbors);
         ledger.free(self.cumsum);
